@@ -31,7 +31,7 @@ export default function TeacherCard({
               {teacher.name}
             </h4>
             <p className="text-sm text-muted-foreground" data-testid="text-teacher-details">
-              {teacher.subject} • {teacher.grade} • Room {teacher.room}
+              {teacher.subject}
             </p>
           </div>
           <div className="flex items-center space-x-2">
@@ -53,10 +53,10 @@ export default function TeacherCard({
             {currentMeeting ? (
               <>
                 <div className="text-sm font-semibold text-green-700" data-testid="text-current-parent">
-                  {currentMeeting.queueEntry?.childName || 'Unknown'}
+                  {(currentMeeting.queueEntry as any)?.parentSession?.parentName || 'Unknown Parent'}
                 </div>
                 <div className="text-xs text-green-600" data-testid="text-meeting-duration">
-                  {formatDuration(currentMeeting.startedAt)}
+                  {currentMeeting.startedAt ? formatDuration(currentMeeting.startedAt) : '0:00'}
                 </div>
               </>
             ) : (
@@ -69,7 +69,7 @@ export default function TeacherCard({
             {nextParent ? (
               <>
                 <div className="text-sm font-semibold text-yellow-700" data-testid="text-next-parent">
-                  {nextParent.childName}
+                  {(nextParent as any)?.parentSession?.parentName || 'Unknown Parent'}
                 </div>
                 <div className="text-xs text-yellow-600">Ready to go</div>
               </>

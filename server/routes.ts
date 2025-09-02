@@ -67,7 +67,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(session);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -79,7 +79,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(session);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -93,7 +93,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const queues = await storage.getQueueEntriesForParent(session.id);
       res.json(queues);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -159,7 +159,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(queueEntry);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -185,7 +185,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ user, teacher });
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -197,7 +197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(teacher);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -206,7 +206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const queue = await storage.getQueueEntriesForTeacher(req.params.teacherId);
       res.json(queue);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -215,7 +215,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const meeting = await storage.getCurrentMeeting(req.params.teacherId);
       res.json(meeting || null);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -283,7 +283,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ success: true });
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -309,7 +309,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ success: true });
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -357,7 +357,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ success: true });
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -367,7 +367,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const teachers = await storage.getAllTeachers();
       res.json(teachers);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -408,7 +408,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(updatedTeacher);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -424,14 +424,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const stats = {
         totalTeachers: teachers.length,
-        activeMeetings: activeMeetings.filter(m => m !== undefined).length,
-        waitingParents: allQueues.flat().filter(q => q.status === 'waiting').length,
-        completedMeetings: 0 // TODO: Implement completed meetings count
+        activeMeetings: activeMeetings.filter(m => m !== null).length,
+        waitingParents: allQueues.flat().filter(q => q.status === 'waiting' || q.status === 'next' || q.status === 'current').length,
+        completedMeetings: allQueues.flat().filter(q => q.status === 'completed').length
       };
 
       res.json(stats);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Get detailed teacher information with queue data for admin
+  app.get('/api/admin/teachers-with-queues', async (req, res) => {
+    try {
+      const teachers = await storage.getAllTeachers();
+      const teachersWithQueues = await Promise.all(
+        teachers.map(async (teacher) => {
+          const queue = await storage.getQueueEntriesForTeacher(teacher.id);
+          const currentMeeting = await storage.getCurrentMeeting(teacher.id);
+          const queueSize = queue.filter(q => q.status === 'waiting' || q.status === 'next' || q.status === 'current').length;
+          const nextParent = queue.find(q => q.status === 'next') || queue.find(q => q.status === 'waiting');
+          
+          // Calculate average wait time (in minutes)
+          const waitingEntries = queue.filter(q => q.status === 'waiting');
+          const avgWaitTime = waitingEntries.length > 0 
+            ? Math.round(waitingEntries.reduce((sum, entry) => {
+                const waitTime = (new Date().getTime() - new Date(entry.joinedAt).getTime()) / 60000; // minutes
+                return sum + waitTime;
+              }, 0) / waitingEntries.length)
+            : 0;
+
+          return {
+            ...teacher,
+            queueSize,
+            avgWaitTime,
+            currentMeeting,
+            nextParent
+          };
+        })
+      );
+
+      res.json(teachersWithQueues);
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -444,7 +480,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(teacher);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 

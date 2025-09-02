@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,14 +37,20 @@ export default function AdminInterface() {
     }
   };
 
-  // Get all teachers
+  // Get all teachers (for setup)
   const { data: teachers = [], refetch: refetchTeachers } = useQuery({
     queryKey: ['/api/admin/teachers'],
     enabled: isLoggedIn
   });
 
+  // Get teachers with queue data (for monitoring)
+  const { data: teachersWithQueues = [], refetch: refetchTeachersWithQueues } = useQuery({
+    queryKey: ['/api/admin/teachers-with-queues'],
+    enabled: isLoggedIn
+  });
+
   // Get admin stats
-  const { data: stats } = useQuery({
+  const { data: stats = {} as any } = useQuery({
     queryKey: ['/api/admin/stats'],
     enabled: isLoggedIn
   });
@@ -53,6 +59,17 @@ export default function AdminInterface() {
   const { lastMessage } = useWebSocket({
     userType: 'admin'
   });
+
+  // Handle WebSocket messages for real-time updates
+  useEffect(() => {
+    if (lastMessage) {
+      if (lastMessage.type === 'queue_update' || lastMessage.type === 'meeting_ended' || lastMessage.type === 'meeting_started') {
+        // Refetch both stats and teacher queue data
+        refetchTeachersWithQueues();
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/stats'] });
+      }
+    }
+  }, [lastMessage, refetchTeachersWithQueues, queryClient]);
 
   // Add teacher mutation
   const addTeacherMutation = useMutation({
@@ -244,7 +261,7 @@ export default function AdminInterface() {
                 <div>
                   <h4 className="text-lg font-medium text-foreground mb-4">Generated Codes</h4>
                   <div className="space-y-4" data-testid="container-generated-codes">
-                    {teachers.map((teacher: any) => (
+                    {(teachers as any[]).map((teacher: any) => (
                       <div key={teacher.id} className="border border-border rounded-lg p-4">
                         <div className="flex justify-between items-start mb-3">
                           <div>
@@ -302,12 +319,14 @@ export default function AdminInterface() {
           <CardContent className="p-6">
             <h3 className="text-xl font-semibold text-foreground mb-4">Live Event Status</h3>
             <div className="grid gap-4" data-testid="container-teacher-cards">
-              {teachers.map((teacher: any) => (
+              {(teachersWithQueues as any[]).map((teacher: any) => (
                 <TeacherCard
                   key={teacher.id}
                   teacher={teacher}
-                  queueSize={Math.floor(Math.random() * 8)}
-                  avgWaitTime={Math.floor(Math.random() * 30) + 10}
+                  currentMeeting={teacher.currentMeeting}
+                  nextParent={teacher.nextParent}
+                  queueSize={teacher.queueSize}
+                  avgWaitTime={teacher.avgWaitTime}
                 />
               ))}
             </div>
