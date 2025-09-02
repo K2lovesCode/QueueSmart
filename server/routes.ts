@@ -139,6 +139,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Teacher Routes
+  app.post('/api/teacher/login', async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      // Simple password check - in production use proper hashing
+      if (password !== 'teacher123') {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      
+      const user = await storage.getUserByUsername(email);
+      if (!user || user.role !== 'teacher') {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      
+      const teacher = await storage.getTeacherByUserId(user.id);
+      if (!teacher) {
+        return res.status(404).json({ error: 'Teacher profile not found' });
+      }
+      
+      res.json({ user, teacher });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   app.get('/api/teacher/:teacherId', async (req, res) => {
     try {
       const teacher = await storage.getTeacher(req.params.teacherId);
@@ -326,12 +351,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const teacherData = insertTeacherSchema.parse(req.body);
       
       // Create user account for teacher
+      const username = teacherData.name.toLowerCase().replace(/\s+/g, '.') + '@school.edu';
       const teacherUser = await storage.createUser({
-        username: teacherData.name.toLowerCase().replace(/\s+/g, '.') + '@school.edu',
+        username,
         password: 'teacher123', // In production, this should be randomly generated
         role: 'teacher',
         name: teacherData.name,
-        email: teacherData.name.toLowerCase().replace(/\s+/g, '.') + '@school.edu'
+        email: username
       });
 
       const teacher = await storage.createTeacher(teacherData, teacherUser.id);

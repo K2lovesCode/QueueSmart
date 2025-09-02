@@ -18,13 +18,24 @@ export default function TeacherInterface() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Mock teacher data for demo - in production this would come from auth
-  useEffect(() => {
-    if (email === 'teacher@school.edu' && password === 'teacher123') {
+  // Get teacher data after login
+  const loginMutation = useMutation({
+    mutationFn: async (credentials: { email: string; password: string }) => {
+      const response = await apiRequest('POST', '/api/teacher/login', credentials);
+      return response.json();
+    },
+    onSuccess: (data) => {
       setIsLoggedIn(true);
-      setTeacherId('mock-teacher-id');
+      setTeacherId(data.teacher.id);
+    },
+    onError: () => {
+      toast({
+        title: 'Invalid credentials',
+        description: 'Please check your email and password',
+        variant: 'destructive'
+      });
     }
-  }, [email, password]);
+  });
 
   // Get teacher data
   const { data: teacher } = useQuery({
@@ -125,18 +136,8 @@ export default function TeacherInterface() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Simple mock authentication - in production use proper auth
     if (email && password) {
-      if (email === 'teacher@school.edu' && password === 'teacher123') {
-        setIsLoggedIn(true);
-        setTeacherId('mock-teacher-id');
-      } else {
-        toast({
-          title: 'Invalid credentials',
-          description: 'Please check your email and password',
-          variant: 'destructive'
-        });
-      }
+      loginMutation.mutate({ email, password });
     }
   };
 
@@ -203,16 +204,16 @@ export default function TeacherInterface() {
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-semibold text-foreground" data-testid="text-teacher-name">
-                  Mrs. Johnson
+                  {teacher?.name || 'Loading...'}
                 </h2>
                 <p className="text-muted-foreground" data-testid="text-teacher-subject">
-                  Mathematics • Grade 3
+                  {teacher?.subject || ''}
                 </p>
               </div>
               <div className="text-right">
                 <div className="text-sm text-muted-foreground">Queue Code</div>
                 <div className="text-xl font-bold text-primary" data-testid="text-queue-code">
-                  JOHNSON3
+                  {teacher?.uniqueCode || ''}
                 </div>
               </div>
             </div>

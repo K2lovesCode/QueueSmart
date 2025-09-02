@@ -79,7 +79,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTeacher(insertTeacher: InsertTeacher, userId: string): Promise<Teacher> {
-    const uniqueCode = this.generateUniqueCode(insertTeacher.name);
+    const uniqueCode = await this.generateUniqueCode(insertTeacher.name);
     const [teacher] = await db.insert(teachers).values({
       ...insertTeacher,
       userId,
@@ -222,10 +222,26 @@ export class DatabaseStorage implements IStorage {
     return meeting || undefined;
   }
 
-  private generateUniqueCode(teacherName: string): string {
+  private async generateUniqueCode(teacherName: string): Promise<string> {
     const namePrefix = teacherName.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 6);
-    const randomSuffix = Math.floor(Math.random() * 99) + 1;
-    return `${namePrefix}${randomSuffix}`;
+    let attempts = 0;
+    let code: string;
+    
+    do {
+      const randomSuffix = Math.floor(Math.random() * 999) + 1;
+      code = `${namePrefix}${randomSuffix}`;
+      
+      // Check if code already exists
+      const existing = await this.getTeacherByCode(code);
+      if (!existing) {
+        return code;
+      }
+      
+      attempts++;
+    } while (attempts < 100); // Prevent infinite loop
+    
+    // Fallback: add timestamp if all attempts failed
+    return `${namePrefix}${Date.now().toString().slice(-3)}`;
   }
 }
 

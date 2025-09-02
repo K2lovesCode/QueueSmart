@@ -18,9 +18,7 @@ export default function AdminInterface() {
   const [showSetup, setShowSetup] = useState(false);
   const [newTeacher, setNewTeacher] = useState({
     name: '',
-    subject: '',
-    grade: '',
-    room: ''
+    subject: ''
   });
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -64,7 +62,7 @@ export default function AdminInterface() {
     },
     onSuccess: () => {
       refetchTeachers();
-      setNewTeacher({ name: '', subject: '', grade: '', room: '' });
+      setNewTeacher({ name: '', subject: '' });
       toast({
         title: 'Teacher added successfully',
         description: 'QR code and unique code have been generated'
@@ -81,7 +79,7 @@ export default function AdminInterface() {
 
   const handleAddTeacher = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newTeacher.name && newTeacher.subject && newTeacher.grade) {
+    if (newTeacher.name && newTeacher.subject) {
       addTeacherMutation.mutate(newTeacher);
     }
   };
@@ -230,35 +228,6 @@ export default function AdminInterface() {
                         data-testid="input-new-teacher-subject"
                       />
                     </div>
-                    <div>
-                      <Label htmlFor="teacher-grade">Grade</Label>
-                      <Select 
-                        value={newTeacher.grade} 
-                        onValueChange={(value) => setNewTeacher(prev => ({ ...prev, grade: value }))}
-                      >
-                        <SelectTrigger data-testid="select-new-teacher-grade">
-                          <SelectValue placeholder="Select grade" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Kindergarten">Kindergarten</SelectItem>
-                          <SelectItem value="Grade 1">Grade 1</SelectItem>
-                          <SelectItem value="Grade 2">Grade 2</SelectItem>
-                          <SelectItem value="Grade 3">Grade 3</SelectItem>
-                          <SelectItem value="Grade 4">Grade 4</SelectItem>
-                          <SelectItem value="Grade 5">Grade 5</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="teacher-room">Room Number</Label>
-                      <Input
-                        id="teacher-room"
-                        value={newTeacher.room}
-                        onChange={(e) => setNewTeacher(prev => ({ ...prev, room: e.target.value }))}
-                        placeholder="e.g. 201"
-                        data-testid="input-new-teacher-room"
-                      />
-                    </div>
                     <Button 
                       type="submit" 
                       className="w-full" 
@@ -283,7 +252,7 @@ export default function AdminInterface() {
                               {teacher.name}
                             </div>
                             <div className="text-sm text-muted-foreground" data-testid={`text-teacher-${teacher.id}-details`}>
-                              {teacher.subject} • {teacher.grade} • Room {teacher.room}
+                              {teacher.subject}
                             </div>
                           </div>
                           <div className="text-right">
