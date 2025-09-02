@@ -1,5 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import type { Teacher, QueueEntry, Meeting } from '@shared/schema';
+import { cn } from '@/lib/utils';
 
 interface TeacherCardProps {
   teacher: Teacher;

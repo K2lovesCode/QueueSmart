@@ -5,7 +5,7 @@ import {
   type InsertQueueEntry, type Meeting, type InsertMeeting
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -123,9 +123,30 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(queueEntries.position));
   }
 
-  async getQueueEntriesForParent(parentSessionId: string): Promise<QueueEntry[]> {
-    return await db.select()
+  async getQueueEntriesForParent(parentSessionId: string): Promise<any[]> {
+    return await db.select({
+      id: queueEntries.id,
+      teacherId: queueEntries.teacherId,
+      parentSessionId: queueEntries.parentSessionId,
+      childName: queueEntries.childName,
+      childGrade: queueEntries.childGrade,
+      status: queueEntries.status,
+      position: queueEntries.position,
+      joinedAt: queueEntries.joinedAt,
+      notifiedAt: queueEntries.notifiedAt,
+      startedAt: queueEntries.startedAt,
+      completedAt: queueEntries.completedAt,
+      teacher: {
+        id: teachers.id,
+        name: teachers.name,
+        subject: teachers.subject,
+        grade: teachers.grade,
+        room: teachers.room,
+        uniqueCode: teachers.uniqueCode
+      }
+    })
       .from(queueEntries)
+      .leftJoin(teachers, eq(queueEntries.teacherId, teachers.id))
       .where(eq(queueEntries.parentSessionId, parentSessionId))
       .orderBy(desc(queueEntries.joinedAt));
   }
