@@ -111,13 +111,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Teacher not found' });
       }
 
+      // Check if this is the first person in queue
+      const existingQueue = await storage.getQueueEntriesForTeacher(teacher.id);
+      const isFirstInQueue = existingQueue.length === 0;
+
       const queueEntry = await storage.createQueueEntry({
         teacherId: teacher.id,
         parentSessionId: session.id,
         childName,
         childGrade,
-        status: 'waiting'
+        status: isFirstInQueue ? 'current' : 'waiting'
       });
+
+      // If first person, immediately start meeting
+      if (isFirstInQueue) {
+        await storage.updateQueueEntry(queueEntry.id, {
+          status: 'current',
+          startedAt: new Date()
+        });
+
+        await storage.createMeeting({
+          teacherId: teacher.id,
+          queueEntryId: queueEntry.id
+        });
+
+        // Notify parent their turn is now
+        broadcast({
+          type: 'status_update',
+          queueEntryId: queueEntry.id,
+          status: 'current',
+          message: 'YOUR TURN NOW!'
+        }, (ws) => ws.userType === 'parent' && ws.parentSessionId === session.id);
+      }
 
       // Broadcast queue update to teacher
       broadcast({

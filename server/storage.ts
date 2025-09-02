@@ -113,12 +113,29 @@ export class DatabaseStorage implements IStorage {
     return entry || undefined;
   }
 
-  async getQueueEntriesForTeacher(teacherId: string): Promise<QueueEntry[]> {
-    return await db.select()
+  async getQueueEntriesForTeacher(teacherId: string): Promise<any[]> {
+    return await db.select({
+      id: queueEntries.id,
+      teacherId: queueEntries.teacherId,
+      parentSessionId: queueEntries.parentSessionId,
+      childName: queueEntries.childName,
+      childGrade: queueEntries.childGrade,
+      status: queueEntries.status,
+      position: queueEntries.position,
+      joinedAt: queueEntries.joinedAt,
+      notifiedAt: queueEntries.notifiedAt,
+      startedAt: queueEntries.startedAt,
+      completedAt: queueEntries.completedAt,
+      parentSession: {
+        id: parentSessions.id,
+        parentName: parentSessions.parentName
+      }
+    })
       .from(queueEntries)
+      .leftJoin(parentSessions, eq(queueEntries.parentSessionId, parentSessions.id))
       .where(and(
         eq(queueEntries.teacherId, teacherId),
-        eq(queueEntries.status, "waiting")
+        sql`${queueEntries.status} IN ('waiting', 'next', 'current')`
       ))
       .orderBy(asc(queueEntries.position));
   }
@@ -173,7 +190,7 @@ export class DatabaseStorage implements IStorage {
       .from(queueEntries)
       .where(and(
         eq(queueEntries.teacherId, teacherId),
-        eq(queueEntries.status, "waiting")
+        sql`${queueEntries.status} IN ('waiting', 'next', 'current')`
       ))
       .orderBy(desc(queueEntries.position))
       .limit(1);
@@ -182,16 +199,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Meetings
-  async getCurrentMeeting(teacherId: string): Promise<Meeting | undefined> {
-    const [meeting] = await db.select()
+  async getCurrentMeeting(teacherId: string): Promise<any> {
+    const [meeting] = await db.select({
+      id: meetings.id,
+      teacherId: meetings.teacherId,
+      queueEntryId: meetings.queueEntryId,
+      startedAt: meetings.startedAt,
+      endedAt: meetings.endedAt,
+      duration: meetings.duration,
+      wasExtended: meetings.wasExtended,
+      extendedBy: meetings.extendedBy,
+      queueEntry: {
+        id: queueEntries.id,
+        childName: queueEntries.childName,
+        childGrade: queueEntries.childGrade,
+        parentSession: {
+          parentName: parentSessions.parentName
+        }
+      }
+    })
       .from(meetings)
+      .leftJoin(queueEntries, eq(meetings.queueEntryId, queueEntries.id))
+      .leftJoin(parentSessions, eq(queueEntries.parentSessionId, parentSessions.id))
       .where(and(
         eq(meetings.teacherId, teacherId),
         sql`${meetings.endedAt} IS NULL`
       ))
       .orderBy(desc(meetings.startedAt))
       .limit(1);
-    return meeting || undefined;
+    return meeting || null;
   }
 
   async createMeeting(insertMeeting: InsertMeeting): Promise<Meeting> {

@@ -67,7 +67,14 @@ export default function ParentInterface() {
         refetchQueues();
         toast({
           title: lastMessage.message,
-          description: lastMessage.description || 'Your queue status has been updated'
+          description: lastMessage.description || 'Your queue status has been updated',
+          duration: 5000
+        });
+      } else if (lastMessage.type === 'delay_notification') {
+        toast({
+          title: 'Meeting Delayed',
+          description: lastMessage.message,
+          duration: 5000
         });
       }
     }

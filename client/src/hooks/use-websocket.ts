@@ -47,6 +47,12 @@ export function useWebSocket(options: UseWebSocketOptions) {
 
     ws.current.onclose = () => {
       setIsConnected(false);
+      // Attempt to reconnect after a delay
+      setTimeout(() => {
+        if (!ws.current || ws.current.readyState === WebSocket.CLOSED) {
+          ws.current = new WebSocket(wsUrl);
+        }
+      }, 3000);
     };
 
     ws.current.onerror = (error) => {

@@ -192,8 +192,9 @@ export default function TeacherInterface() {
     );
   }
 
-  const nextParent = queue.find((entry: any) => entry.status === 'next') || queue[0];
-  const waitingParents = queue.filter((entry: any) => entry.status === 'waiting').slice(1);
+  const currentParent = queue.find((entry: any) => entry.status === 'current');
+  const nextParent = queue.find((entry: any) => entry.status === 'next') || queue.find((entry: any) => entry.status === 'waiting');
+  const waitingParents = queue.filter((entry: any) => entry.status === 'waiting' && entry.id !== nextParent?.id);
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -229,13 +230,10 @@ export default function TeacherInterface() {
                 {currentMeeting ? (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                     <div className="text-2xl font-semibold text-green-700" data-testid="text-current-parent">
-                      Sarah Smith
+                      {currentMeeting.queueEntry?.parentSession?.parentName || 'Unknown Parent'}
                     </div>
                     <div className="text-green-600" data-testid="text-current-student">
-                      Student: Emma Smith
-                    </div>
-                    <div className="text-sm text-green-500" data-testid="text-current-grade">
-                      Grade 3
+                      Student: {currentMeeting.queueEntry?.childName || 'Unknown Student'}
                     </div>
                   </div>
                 ) : (
@@ -263,10 +261,10 @@ export default function TeacherInterface() {
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
                   <div className="text-sm text-yellow-600 font-medium">NEXT</div>
                   <div className="font-semibold text-yellow-700" data-testid="text-next-parent-name">
-                    {nextParent.childName}
+                    {nextParent.parentSession?.parentName || 'Unknown Parent'}
                   </div>
                   <div className="text-sm text-yellow-600">
-                    Student: <span data-testid="text-next-child">{nextParent.childName}</span> • Grade <span data-testid="text-next-grade">{nextParent.childGrade}</span>
+                    Student: <span data-testid="text-next-child">{nextParent.childName}</span>
                   </div>
                 </div>
               )}
@@ -281,14 +279,14 @@ export default function TeacherInterface() {
                     <div key={parent.id} className="flex justify-between items-center py-2 px-3 bg-muted rounded-md">
                       <div>
                         <div className="text-sm font-medium text-foreground" data-testid={`text-waiting-parent-${index}`}>
-                          {parent.childName}
+                          {parent.parentSession?.parentName || 'Unknown Parent'}
                         </div>
                         <div className="text-xs text-muted-foreground" data-testid={`text-waiting-student-${index}`}>
                           Student: {parent.childName}
                         </div>
                       </div>
                       <div className="text-xs text-muted-foreground" data-testid={`text-wait-time-${index}`}>
-                        {Math.floor(Math.random() * 20) + 5} min
+                        Position {parent.position}
                       </div>
                     </div>
                   ))}
