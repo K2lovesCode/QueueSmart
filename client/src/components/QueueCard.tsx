@@ -61,7 +61,7 @@ export default function QueueCard({
           </span>
         </div>
         <div className="text-sm text-muted-foreground">
-          Student: <span data-testid="text-child-name">{childName}</span> • Grade <span data-testid="text-grade">{grade}</span>
+          Student: <span data-testid="text-child-name">{childName}</span>
         </div>
       </CardContent>
     </Card>

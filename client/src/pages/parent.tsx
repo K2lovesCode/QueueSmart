@@ -21,7 +21,7 @@ export default function ParentInterface() {
   const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
   const [parentName, setParentName] = useState('');
   const [childName, setChildName] = useState('');
-  const [childGrade, setChildGrade] = useState('');
+  const [childGrade, setChildGrade] = useState('Not specified');
   const [teacherCode, setTeacherCode] = useState('');
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -168,11 +168,11 @@ export default function ParentInterface() {
 
   const handleChildInfoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (childName.trim() && childGrade && selectedTeacher) {
+    if (childName.trim() && selectedTeacher) {
       joinQueueMutation.mutate({
         teacherCode: selectedTeacher.uniqueCode,
         childName: childName.trim(),
-        childGrade
+        childGrade: 'Not specified'
       });
     }
   };
@@ -314,24 +314,6 @@ export default function ParentInterface() {
                     required
                     data-testid="input-child-name"
                   />
-                </div>
-                <div>
-                  <Label htmlFor="child-grade" className="block text-sm font-medium text-foreground mb-2">
-                    Grade
-                  </Label>
-                  <Select value={childGrade} onValueChange={setChildGrade} required>
-                    <SelectTrigger data-testid="select-child-grade">
-                      <SelectValue placeholder="Select grade" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Kindergarten">Kindergarten</SelectItem>
-                      <SelectItem value="Grade 1">Grade 1</SelectItem>
-                      <SelectItem value="Grade 2">Grade 2</SelectItem>
-                      <SelectItem value="Grade 3">Grade 3</SelectItem>
-                      <SelectItem value="Grade 4">Grade 4</SelectItem>
-                      <SelectItem value="Grade 5">Grade 5</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
                 <Button 
                   type="submit" 
