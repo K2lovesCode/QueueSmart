@@ -116,28 +116,18 @@ export default function AdminInterface() {
     }
   });
 
-  // Generate secure password
+  // Generate school-friendly password
   const generatePassword = () => {
-    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
-    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const numbers = '0123456789';
-    const symbols = '!@#$%^&*';
-    const allChars = lowercase + uppercase + numbers + symbols;
+    const words = ['Apple', 'Blue', 'Cat', 'Dog', 'Easy', 'Fast', 'Good', 'Hope', 'Joy', 'Kind', 'Love', 'Moon', 'Nice', 'Open', 'Play', 'Quick', 'Rain', 'Star', 'Tree', 'View', 'Wind', 'Year'];
+    const numbers = '123456789';
     
-    let password = '';
-    // Ensure at least one character from each category
-    password += lowercase[Math.floor(Math.random() * lowercase.length)];
-    password += uppercase[Math.floor(Math.random() * uppercase.length)];
-    password += numbers[Math.floor(Math.random() * numbers.length)];
-    password += symbols[Math.floor(Math.random() * symbols.length)];
+    // Pick a random word and add 2-3 numbers
+    const word = words[Math.floor(Math.random() * words.length)];
+    const num1 = numbers[Math.floor(Math.random() * numbers.length)];
+    const num2 = numbers[Math.floor(Math.random() * numbers.length)];
+    const num3 = numbers[Math.floor(Math.random() * numbers.length)];
     
-    // Generate remaining characters
-    for (let i = 4; i < 12; i++) {
-      password += allChars[Math.floor(Math.random() * allChars.length)];
-    }
-    
-    // Shuffle the password
-    return password.split('').sort(() => Math.random() - 0.5).join('');
+    return `${word}${num1}${num2}${num3}`;
   };
 
   const handleAddTeacher = (e: React.FormEvent) => {
@@ -591,7 +581,7 @@ Instructions:
                         <strong>Give these credentials to the teacher:</strong> They need both the email and password to access their dashboard and manage their queue.
                       </div>
                       <div className="text-xs text-muted-foreground bg-blue-50 p-2 rounded">
-                        💡 <strong>Auto-Generated:</strong> Password was automatically created with secure characters. Click the edit icon to customize if needed.
+                        💡 <strong>Auto-Generated:</strong> School-friendly password created (word + numbers). Click the edit icon to customize if needed.
                       </div>
                     </div>
                   </CardContent>
