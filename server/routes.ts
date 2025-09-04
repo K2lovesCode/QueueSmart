@@ -101,19 +101,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { sessionId, teacherCode, childName, childGrade } = req.body;
       
+      console.log('Join queue request:', { sessionId, teacherCode, childName, childGrade });
+      
       const session = await storage.getParentSession(sessionId);
       if (!session) {
+        console.log('Session not found:', sessionId);
         return res.status(404).json({ error: 'Session not found' });
       }
 
       const teacher = await storage.getTeacherByCode(teacherCode);
       if (!teacher) {
+        console.log('Teacher not found for code:', teacherCode);
         return res.status(404).json({ error: 'Teacher not found' });
       }
 
-      // Check if this is the first person in queue
+      // Check if parent is already in this teacher's queue
       const existingQueue = await storage.getQueueEntriesForTeacher(teacher.id);
+      const parentAlreadyInQueue = existingQueue.some(entry => entry.parentSession?.id === session.id);
+      
+      if (parentAlreadyInQueue) {
+        console.log('Parent already in queue:', session.id, teacher.id);
+        return res.status(400).json({ error: 'You are already in this teacher\'s queue' });
+      }
+
       const isFirstInQueue = existingQueue.length === 0;
+      console.log('Queue position - isFirst:', isFirstInQueue, 'existing length:', existingQueue.length);
 
       const queueEntry = await storage.createQueueEntry({
         teacherId: teacher.id,
@@ -157,8 +169,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         teacherId: teacher.id
       }, (ws) => ws.userType === 'admin');
 
+      console.log('Queue entry created successfully:', queueEntry);
       res.json(queueEntry);
     } catch (error) {
+      console.error('Error joining queue:', error);
       res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });

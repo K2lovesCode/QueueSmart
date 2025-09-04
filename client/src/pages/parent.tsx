@@ -120,10 +120,15 @@ export default function ParentInterface() {
   // Join queue mutation
   const joinQueueMutation = useMutation({
     mutationFn: async (data: { teacherCode: string; childName: string; childGrade: string }) => {
+      console.log('Joining queue with data:', { sessionId, ...data });
       const response = await apiRequest('POST', '/api/parent/join-queue', {
         sessionId,
         ...data
       });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to join queue');
+      }
       return response.json();
     },
     onSuccess: () => {
