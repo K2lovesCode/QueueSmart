@@ -390,13 +390,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/admin/teachers', async (req, res) => {
     try {
-      const teacherData = insertTeacherSchema.parse(req.body);
+      const { name, subject, password } = req.body;
+      const teacherData = { name, subject };
       
       // Create user account for teacher
       const username = teacherData.name.toLowerCase().replace(/\s+/g, '.') + '@school.edu';
       const teacherUser = await storage.createUser({
         username,
-        password: 'teacher123', // In production, this should be randomly generated
+        password: password || 'teacher123', // Use provided password or default
         role: 'teacher',
         name: teacherData.name,
         email: username

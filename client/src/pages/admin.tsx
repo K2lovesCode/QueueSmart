@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useWebSocket } from '@/hooks/use-websocket';
 import TeacherCard from '@/components/TeacherCard';
 import { apiRequest } from '@/lib/queryClient';
-import { Shield, Settings, Download, Plus, X, Printer, Copy } from 'lucide-react';
+import { Shield, Settings, Download, Plus, X, Printer, Copy, Edit3, Check, RotateCcw } from 'lucide-react';
 
 export default function AdminInterface() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -25,6 +25,7 @@ export default function AdminInterface() {
     password: string;
     teacher: any;
   } | null>(null);
+  const [editingPassword, setEditingPassword] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -79,8 +80,14 @@ export default function AdminInterface() {
   // Add teacher mutation
   const addTeacherMutation = useMutation({
     mutationFn: async (teacherData: typeof newTeacher) => {
-      const response = await apiRequest('POST', '/api/admin/teachers', teacherData);
-      return response.json();
+      const generatedPassword = generatePassword();
+      const payload = {
+        ...teacherData,
+        password: generatedPassword
+      };
+      const response = await apiRequest('POST', '/api/admin/teachers', payload);
+      const data = await response.json();
+      return { ...data, generatedPassword };
     },
     onSuccess: (data) => {
       refetchTeachers();
@@ -90,9 +97,10 @@ export default function AdminInterface() {
       const email = data.name.toLowerCase().replace(/\s+/g, '.') + '@school.edu';
       setNewTeacherCredentials({
         email,
-        password: 'teacher123',
+        password: data.generatedPassword,
         teacher: data
       });
+      setEditingPassword(false);
       
       toast({
         title: 'Teacher added successfully',
@@ -107,6 +115,30 @@ export default function AdminInterface() {
       });
     }
   });
+
+  // Generate secure password
+  const generatePassword = () => {
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const numbers = '0123456789';
+    const symbols = '!@#$%^&*';
+    const allChars = lowercase + uppercase + numbers + symbols;
+    
+    let password = '';
+    // Ensure at least one character from each category
+    password += lowercase[Math.floor(Math.random() * lowercase.length)];
+    password += uppercase[Math.floor(Math.random() * uppercase.length)];
+    password += numbers[Math.floor(Math.random() * numbers.length)];
+    password += symbols[Math.floor(Math.random() * symbols.length)];
+    
+    // Generate remaining characters
+    for (let i = 4; i < 12; i++) {
+      password += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+    
+    // Shuffle the password
+    return password.split('').sort(() => Math.random() - 0.5).join('');
+  };
 
   const handleAddTeacher = (e: React.FormEvent) => {
     e.preventDefault();
@@ -480,8 +512,55 @@ Instructions:
                         </div>
                         <div>
                           <div className="text-sm text-muted-foreground">Password</div>
-                          <div className="font-mono text-sm" data-testid="text-credentials-password">
-                            {newTeacherCredentials.password}
+                          <div className="flex items-center space-x-2">
+                            {editingPassword ? (
+                              <div className="flex items-center space-x-1">
+                                <Input
+                                  value={newTeacherCredentials.password}
+                                  onChange={(e) => setNewTeacherCredentials({
+                                    ...newTeacherCredentials,
+                                    password: e.target.value
+                                  })}
+                                  className="font-mono text-sm h-8"
+                                  data-testid="input-edit-password"
+                                />
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost"
+                                  onClick={() => setEditingPassword(false)}
+                                  data-testid="button-save-password"
+                                >
+                                  <Check className="h-3 w-3" />
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setNewTeacherCredentials({
+                                      ...newTeacherCredentials,
+                                      password: generatePassword()
+                                    });
+                                  }}
+                                  data-testid="button-regenerate-password"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center space-x-2">
+                                <span className="font-mono text-sm" data-testid="text-credentials-password">
+                                  {newTeacherCredentials.password}
+                                </span>
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost"
+                                  onClick={() => setEditingPassword(true)}
+                                  data-testid="button-edit-password"
+                                >
+                                  <Edit3 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -507,8 +586,13 @@ Instructions:
                       </Button>
                     </div>
                     
-                    <div className="mt-4 text-sm text-green-700 bg-green-100 p-3 rounded">
-                      <strong>Give these credentials to the teacher:</strong> They need both the email and password to access their dashboard and manage their queue.
+                    <div className="mt-4 space-y-2">
+                      <div className="text-sm text-green-700 bg-green-100 p-3 rounded">
+                        <strong>Give these credentials to the teacher:</strong> They need both the email and password to access their dashboard and manage their queue.
+                      </div>
+                      <div className="text-xs text-muted-foreground bg-blue-50 p-2 rounded">
+                        💡 <strong>Auto-Generated:</strong> Password was automatically created with secure characters. Click the edit icon to customize if needed.
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
