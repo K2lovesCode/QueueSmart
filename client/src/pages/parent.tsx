@@ -48,10 +48,15 @@ export default function ParentInterface() {
   });
 
   // Get parent's queues
-  const { data: parentQueues = [], refetch: refetchQueues } = useQuery({
+  const { data: allQueues = [], refetch: refetchQueues } = useQuery({
     queryKey: ['/api/parent', sessionId, 'queues'],
     enabled: !!parentSession
   });
+
+  // Filter to only show active queues (not completed or skipped)
+  const parentQueues = allQueues.filter((queue: any) =>
+    queue.status === 'waiting' || queue.status === 'next' || queue.status === 'current'
+  );
 
   // WebSocket for real-time updates
   const { lastMessage } = useWebSocket({
@@ -63,22 +68,39 @@ export default function ParentInterface() {
   // Handle WebSocket messages
   useEffect(() => {
     if (lastMessage) {
-      if (lastMessage.type === 'status_update') {
+      if (lastMessage.type === 'status_update' || lastMessage.type === 'queue_update') {
         refetchQueues();
-        toast({
-          title: lastMessage.message,
-          description: lastMessage.description || 'Your queue status has been updated',
-          duration: 5000
-        });
+        if (lastMessage.message) {
+          toast({
+            title: lastMessage.message,
+            description: lastMessage.description || 'Your queue status has been updated',
+            duration: 5000
+          });
+        }
       } else if (lastMessage.type === 'delay_notification') {
         toast({
           title: 'Meeting Delayed',
           description: lastMessage.message,
           duration: 5000
         });
+      } else if (lastMessage.type === 'queue_removed') {
+        refetchQueues();
+        toast({
+          title: 'Queue Update',
+          description: 'You have been removed from the queue',
+          duration: 5000
+        });
       }
     }
   }, [lastMessage, refetchQueues, toast]);
+
+  // Auto-refresh queue data every 30 seconds to prevent stale data
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetchQueues();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [refetchQueues]);
 
   // Create parent session mutation
   const createSessionMutation = useMutation({

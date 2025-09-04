@@ -232,6 +232,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           status: 'completed',
           completedAt: new Date()
         });
+
+        // Get the completed entry to notify the parent
+        const completedEntry = await storage.getQueueEntry(currentMeeting.queueEntryId);
+        if (completedEntry) {
+          broadcast({
+            type: 'queue_removed',
+            queueEntryId: completedEntry.id,
+            message: 'Your meeting has ended. Thank you!'
+          }, (ws) => ws.userType === 'parent' && ws.parentSessionId === completedEntry.parentSessionId);
+        }
       }
 
       // Get next parent in queue
@@ -326,6 +336,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           status: 'skipped',
           completedAt: new Date()
         });
+
+        // Notify the skipped parent
+        broadcast({
+          type: 'queue_removed',
+          queueEntryId: skippedEntry.id,
+          message: 'You have been removed from the queue'
+        }, (ws) => ws.userType === 'parent' && ws.parentSessionId === skippedEntry.parentSessionId);
 
         // Move to next person
         if (queue.length > 1) {
