@@ -168,14 +168,17 @@ export default function ParentInterface() {
 
   const handleTeacherCodeSubmit = async (code: string) => {
     try {
+      console.log('Looking up teacher with code:', code);
       const response = await fetch(`/api/teachers/by-code/${code}`);
       if (!response.ok) {
         throw new Error('Teacher not found');
       }
       const teacher = await response.json();
+      console.log('Teacher found:', teacher);
       setSelectedTeacher(teacher);
       setCurrentStep('child-info');
     } catch (error) {
+      console.log('Teacher lookup failed:', error);
       toast({
         title: 'Invalid code',
         description: 'Please check the teacher code and try again',
@@ -202,13 +205,39 @@ export default function ParentInterface() {
 
   const handleChildInfoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (childName.trim() && selectedTeacher) {
-      joinQueueMutation.mutate({
-        teacherCode: selectedTeacher.uniqueCode,
-        childName: childName.trim(),
-        childGrade: 'Not specified'
+    console.log('Child info form submitted:', { childName, selectedTeacher });
+    
+    if (!childName.trim()) {
+      console.log('Child name is empty');
+      toast({
+        title: 'Missing Information',
+        description: 'Please enter your child\'s name',
+        variant: 'destructive'
       });
+      return;
     }
+    
+    if (!selectedTeacher) {
+      console.log('No teacher selected');
+      toast({
+        title: 'No Teacher Selected',
+        description: 'Please go back and select a teacher',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    console.log('Calling join queue mutation with:', {
+      teacherCode: selectedTeacher.uniqueCode,
+      childName: childName.trim(),
+      childGrade: 'Not specified'
+    });
+    
+    joinQueueMutation.mutate({
+      teacherCode: selectedTeacher.uniqueCode,
+      childName: childName.trim(),
+      childGrade: 'Not specified'
+    });
   };
 
   const handleManualCodeSubmit = (e: React.FormEvent) => {
