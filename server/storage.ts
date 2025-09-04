@@ -164,8 +164,11 @@ export class DatabaseStorage implements IStorage {
     })
       .from(queueEntries)
       .leftJoin(teachers, eq(queueEntries.teacherId, teachers.id))
-      .where(eq(queueEntries.parentSessionId, parentSessionId))
-      .orderBy(desc(queueEntries.joinedAt));
+      .where(and(
+        eq(queueEntries.parentSessionId, parentSessionId),
+        sql`${queueEntries.status} IN ('waiting', 'next', 'current')`
+      ))
+      .orderBy(asc(queueEntries.position));
   }
 
   async createQueueEntry(insertEntry: InsertQueueEntry): Promise<QueueEntry> {

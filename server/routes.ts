@@ -391,7 +391,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/admin/teachers', async (req, res) => {
     try {
       const { name, subject, password } = req.body;
-      const teacherData = { name, subject };
+      
+      // Validate only the teacher data, not the password
+      const teacherData = insertTeacherSchema.parse({ name, subject });
       
       // Create user account for teacher
       const username = teacherData.name.toLowerCase().replace(/\s+/g, '.') + '@school.edu';
@@ -443,7 +445,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const stats = {
         totalTeachers: teachers.length,
         activeMeetings: activeMeetings.filter(m => m !== null).length,
-        waitingParents: allQueues.flat().filter(q => q.status === 'waiting' || q.status === 'next' || q.status === 'current').length,
+        waitingParents: allQueues.flat().filter(q => q.status === 'waiting' || q.status === 'next').length,
         completedMeetings: allQueues.flat().filter(q => q.status === 'completed').length
       };
 
@@ -461,17 +463,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         teachers.map(async (teacher) => {
           const queue = await storage.getQueueEntriesForTeacher(teacher.id);
           const currentMeeting = await storage.getCurrentMeeting(teacher.id);
-          const queueSize = queue.filter(q => q.status === 'waiting' || q.status === 'next' || q.status === 'current').length;
+          const queueSize = queue.filter(q => q.status === 'waiting' || q.status === 'next').length;
           const nextParent = queue.find(q => q.status === 'next') || queue.find(q => q.status === 'waiting');
           
-          // Calculate average wait time (in minutes)
+          // Calculate estimated wait time based on queue position
           const waitingEntries = queue.filter(q => q.status === 'waiting');
-          const avgWaitTime = waitingEntries.length > 0 
-            ? Math.round(waitingEntries.reduce((sum, entry) => {
-                const waitTime = (new Date().getTime() - new Date(entry.joinedAt).getTime()) / 60000; // minutes
-                return sum + waitTime;
-              }, 0) / waitingEntries.length)
-            : 0;
+          const avgMeetingTime = 15; // Average meeting duration in minutes
+          const avgWaitTime = queueSize > 0 ? queueSize * avgMeetingTime : 0;
 
           return {
             ...teacher,

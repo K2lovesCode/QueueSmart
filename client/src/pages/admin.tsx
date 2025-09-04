@@ -80,7 +80,7 @@ export default function AdminInterface() {
   // Add teacher mutation
   const addTeacherMutation = useMutation({
     mutationFn: async (teacherData: typeof newTeacher) => {
-      const generatedPassword = generatePassword();
+      const generatedPassword = generatePassword(teacherData.name);
       const payload = {
         ...teacherData,
         password: generatedPassword
@@ -116,18 +116,27 @@ export default function AdminInterface() {
     }
   });
 
-  // Generate school-friendly password
-  const generatePassword = () => {
-    const words = ['Apple', 'Blue', 'Cat', 'Dog', 'Easy', 'Fast', 'Good', 'Hope', 'Joy', 'Kind', 'Love', 'Moon', 'Nice', 'Open', 'Play', 'Quick', 'Rain', 'Star', 'Tree', 'View', 'Wind', 'Year'];
-    const numbers = '123456789';
+  // Generate teacher-name-based password
+  const generatePassword = (teacherName?: string) => {
+    if (teacherName) {
+      // Use teacher's name to create a friendly password
+      const nameParts = teacherName.split(' ');
+      const firstName = nameParts[0] || 'Teacher';
+      const lastName = nameParts[1] || '';
+      
+      // Take first 3-4 letters of first name + first 2 letters of last name + 3 numbers
+      const nameBase = (firstName.slice(0, 3) + (lastName.slice(0, 2) || '')).toLowerCase();
+      const numbers = Math.floor(100 + Math.random() * 900); // 3-digit number
+      
+      // Capitalize first letter
+      return nameBase.charAt(0).toUpperCase() + nameBase.slice(1) + numbers;
+    }
     
-    // Pick a random word and add 2-3 numbers
+    // Fallback for when no name is provided
+    const words = ['Apple', 'Blue', 'Cat', 'Dog', 'Easy', 'Fast'];
     const word = words[Math.floor(Math.random() * words.length)];
-    const num1 = numbers[Math.floor(Math.random() * numbers.length)];
-    const num2 = numbers[Math.floor(Math.random() * numbers.length)];
-    const num3 = numbers[Math.floor(Math.random() * numbers.length)];
-    
-    return `${word}${num1}${num2}${num3}`;
+    const numbers = Math.floor(100 + Math.random() * 900);
+    return word + numbers;
   };
 
   const handleAddTeacher = (e: React.FormEvent) => {
@@ -528,7 +537,7 @@ Instructions:
                                   onClick={() => {
                                     setNewTeacherCredentials({
                                       ...newTeacherCredentials,
-                                      password: generatePassword()
+                                      password: generatePassword(newTeacherCredentials.teacher.name)
                                     });
                                   }}
                                   data-testid="button-regenerate-password"
@@ -581,7 +590,7 @@ Instructions:
                         <strong>Give these credentials to the teacher:</strong> They need both the email and password to access their dashboard and manage their queue.
                       </div>
                       <div className="text-xs text-muted-foreground bg-blue-50 p-2 rounded">
-                        💡 <strong>Auto-Generated:</strong> School-friendly password created (word + numbers). Click the edit icon to customize if needed.
+                        💡 <strong>Name-Based Password:</strong> Generated using teacher's name for easy remembering. Click the edit icon to customize if needed.
                       </div>
                     </div>
                   </CardContent>
