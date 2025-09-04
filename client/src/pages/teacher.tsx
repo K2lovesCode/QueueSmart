@@ -141,6 +141,18 @@ export default function TeacherInterface() {
     }
   };
 
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setTeacherId(null);
+    setEmail('');
+    setPassword('');
+    setCurrentMeetingTimer(0);
+    toast({
+      title: 'Logged out',
+      description: 'You have been successfully logged out'
+    });
+  };
+
   const formatTimer = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -211,11 +223,25 @@ export default function TeacherInterface() {
                   {teacher?.subject || ''}
                 </p>
               </div>
-              <div className="text-right">
-                <div className="text-sm text-muted-foreground">Queue Code</div>
-                <div className="text-xl font-bold text-primary" data-testid="text-queue-code">
-                  {teacher?.uniqueCode || ''}
+              <div className="flex items-center space-x-4">
+                <div className="text-right">
+                  <div className="text-sm text-muted-foreground">Queue Code</div>
+                  <div className="text-xl font-bold text-primary" data-testid="text-queue-code">
+                    {teacher?.uniqueCode || ''}
+                  </div>
                 </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleLogout}
+                  className="text-muted-foreground hover:text-foreground"
+                  data-testid="button-teacher-logout"
+                >
+                  <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  Log Out
+                </Button>
               </div>
             </div>
           </CardContent>
