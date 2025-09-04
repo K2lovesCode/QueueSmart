@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useWebSocket } from '@/hooks/use-websocket';
 import TeacherCard from '@/components/TeacherCard';
 import { apiRequest } from '@/lib/queryClient';
-import { Shield, Settings, Download, Plus, X } from 'lucide-react';
+import { Shield, Settings, Download, Plus, X, Printer, Copy } from 'lucide-react';
 
 export default function AdminInterface() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -20,6 +20,11 @@ export default function AdminInterface() {
     name: '',
     subject: ''
   });
+  const [newTeacherCredentials, setNewTeacherCredentials] = useState<{
+    email: string;
+    password: string;
+    teacher: any;
+  } | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -77,12 +82,21 @@ export default function AdminInterface() {
       const response = await apiRequest('POST', '/api/admin/teachers', teacherData);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       refetchTeachers();
       setNewTeacher({ name: '', subject: '' });
+      
+      // Store the credentials for display
+      const email = data.name.toLowerCase().replace(/\s+/g, '.') + '@school.edu';
+      setNewTeacherCredentials({
+        email,
+        password: 'teacher123',
+        teacher: data
+      });
+      
       toast({
         title: 'Teacher added successfully',
-        description: 'QR code and unique code have been generated'
+        description: 'Login credentials generated. You can now print them.'
       });
     },
     onError: (error) => {
@@ -98,6 +112,112 @@ export default function AdminInterface() {
     e.preventDefault();
     if (newTeacher.name && newTeacher.subject) {
       addTeacherMutation.mutate(newTeacher);
+    }
+  };
+
+  const handlePrintCredentials = () => {
+    if (!newTeacherCredentials) return;
+    
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Teacher Login Credentials</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 40px; }
+              .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+              .credentials { background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; }
+              .field { margin: 10px 0; }
+              .label { font-weight: bold; color: #555; }
+              .value { font-size: 16px; margin-left: 10px; }
+              .instructions { margin-top: 30px; line-height: 1.6; }
+              @media print { body { margin: 0; } }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>Parent-Teacher Meeting System</h1>
+              <h2>Teacher Login Credentials</h2>
+            </div>
+            
+            <div class="credentials">
+              <div class="field">
+                <span class="label">Teacher Name:</span>
+                <span class="value">${newTeacherCredentials.teacher.name}</span>
+              </div>
+              <div class="field">
+                <span class="label">Subject:</span>
+                <span class="value">${newTeacherCredentials.teacher.subject}</span>
+              </div>
+              <div class="field">
+                <span class="label">Queue Code:</span>
+                <span class="value">${newTeacherCredentials.teacher.uniqueCode}</span>
+              </div>
+              <hr style="margin: 20px 0;">
+              <div class="field">
+                <span class="label">Email/Username:</span>
+                <span class="value">${newTeacherCredentials.email}</span>
+              </div>
+              <div class="field">
+                <span class="label">Password:</span>
+                <span class="value">${newTeacherCredentials.password}</span>
+              </div>
+            </div>
+            
+            <div class="instructions">
+              <h3>Instructions for Teacher:</h3>
+              <ol>
+                <li>Go to the Teacher Dashboard</li>
+                <li>Login with the email and password provided above</li>
+                <li>Your queue code is <strong>${newTeacherCredentials.teacher.uniqueCode}</strong> - share this with parents</li>
+                <li>Parents can scan your QR code or enter your queue code manually</li>
+                <li>Use the meeting controls to manage your queue during parent-teacher meetings</li>
+              </ol>
+              
+              <p style="margin-top: 20px; font-size: 14px; color: #666;">
+                Keep these credentials secure. Contact the admin if you need to reset your password.
+              </p>
+            </div>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  };
+
+  const copyCredentials = async () => {
+    if (!newTeacherCredentials) return;
+    
+    const credentialsText = `Teacher Login Credentials
+
+Teacher: ${newTeacherCredentials.teacher.name}
+Subject: ${newTeacherCredentials.teacher.subject}
+Queue Code: ${newTeacherCredentials.teacher.uniqueCode}
+
+Login Details:
+Email: ${newTeacherCredentials.email}
+Password: ${newTeacherCredentials.password}
+
+Instructions:
+1. Go to the Teacher Dashboard
+2. Login with the email and password above
+3. Share your queue code (${newTeacherCredentials.teacher.uniqueCode}) with parents
+4. Parents can scan QR code or enter queue code manually`;
+
+    try {
+      await navigator.clipboard.writeText(credentialsText);
+      toast({
+        title: 'Credentials copied',
+        description: 'Login credentials copied to clipboard'
+      });
+    } catch (error) {
+      toast({
+        title: 'Copy failed',
+        description: 'Unable to copy to clipboard',
+        variant: 'destructive'
+      });
     }
   };
 
@@ -310,6 +430,89 @@ export default function AdminInterface() {
                   </div>
                 </div>
               </div>
+
+              {/* Generated Login Credentials */}
+              {newTeacherCredentials && (
+                <Card className="mt-6 border-green-200 bg-green-50" data-testid="card-generated-credentials">
+                  <CardContent className="p-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="text-lg font-semibold text-green-800">Generated Login Credentials</h4>
+                      <Button
+                        onClick={() => setNewTeacherCredentials(null)}
+                        variant="ghost"
+                        size="sm"
+                        data-testid="button-close-credentials"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    
+                    <div className="bg-white rounded-lg p-4 mb-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <div className="text-sm text-muted-foreground">Teacher</div>
+                          <div className="font-medium" data-testid="text-credentials-teacher">
+                            {newTeacherCredentials.teacher.name}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">Subject</div>
+                          <div className="font-medium" data-testid="text-credentials-subject">
+                            {newTeacherCredentials.teacher.subject}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">Queue Code</div>
+                          <div className="font-bold text-primary" data-testid="text-credentials-code">
+                            {newTeacherCredentials.teacher.uniqueCode}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <hr className="my-4" />
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-sm text-muted-foreground">Login Email</div>
+                          <div className="font-mono text-sm" data-testid="text-credentials-email">
+                            {newTeacherCredentials.email}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">Password</div>
+                          <div className="font-mono text-sm" data-testid="text-credentials-password">
+                            {newTeacherCredentials.password}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex space-x-3">
+                      <Button 
+                        onClick={handlePrintCredentials}
+                        className="flex-1"
+                        data-testid="button-print-credentials"
+                      >
+                        <Printer className="mr-2 h-4 w-4" />
+                        Print Credentials
+                      </Button>
+                      <Button 
+                        onClick={copyCredentials}
+                        variant="secondary"
+                        className="flex-1"
+                        data-testid="button-copy-credentials"
+                      >
+                        <Copy className="mr-2 h-4 w-4" />
+                        Copy to Clipboard
+                      </Button>
+                    </div>
+                    
+                    <div className="mt-4 text-sm text-green-700 bg-green-100 p-3 rounded">
+                      <strong>Give these credentials to the teacher:</strong> They need both the email and password to access their dashboard and manage their queue.
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </CardContent>
           </Card>
         )}
