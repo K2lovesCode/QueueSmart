@@ -74,7 +74,6 @@ async function seedDatabase() {
         userId: teacherUser.id,
         name: teacherData.name,
         subject: teacherData.subject,
-        grade: teacherData.grade,
         uniqueCode: teacherData.uniqueCode,
         qrCode: qrCodeUrl,
         isActive: true

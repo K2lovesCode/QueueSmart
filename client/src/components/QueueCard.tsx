@@ -6,7 +6,6 @@ interface QueueCardProps {
   teacherName: string;
   subject: string;
   childName: string;
-  grade: string;
   className?: string;
 }
 
@@ -36,7 +35,6 @@ export default function QueueCard({
   teacherName, 
   subject, 
   childName, 
-  grade, 
   className 
 }: QueueCardProps) {
   const config = statusConfig[status];

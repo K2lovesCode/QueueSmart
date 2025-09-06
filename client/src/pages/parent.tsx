@@ -63,7 +63,7 @@ export default function ParentInterface() {
   });
 
   // Filter to only show active queues (not completed or skipped)
-  const parentQueues = allQueues.filter((queue: any) =>
+  const parentQueues = (allQueues || []).filter((queue: any) =>
     queue.status === 'waiting' || queue.status === 'next' || queue.status === 'current'
   );
 
@@ -427,7 +427,6 @@ export default function ParentInterface() {
               teacherName={queue.teacher?.name || 'Teacher'}
               subject={queue.teacher?.subject || ''}
               childName={queue.childName}
-              grade={queue.childGrade}
             />
           ))}
         </div>

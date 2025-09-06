@@ -28,8 +28,8 @@ export interface IStorage {
   
   // Queue Entries
   getQueueEntry(id: string): Promise<QueueEntry | undefined>;
-  getQueueEntriesForTeacher(teacherId: string): Promise<QueueEntry[]>;
-  getQueueEntriesForParent(parentSessionId: string): Promise<QueueEntry[]>;
+  getQueueEntriesForTeacher(teacherId: string): Promise<any[]>;
+  getQueueEntriesForParent(parentSessionId: string): Promise<any[]>;
   createQueueEntry(entry: InsertQueueEntry): Promise<QueueEntry>;
   updateQueueEntry(id: string, updates: Partial<QueueEntry>): Promise<QueueEntry | undefined>;
   getNextQueuePosition(teacherId: string): Promise<number>;
@@ -211,10 +211,7 @@ export class DatabaseStorage implements IStorage {
       queueEntry: {
         id: queueEntries.id,
         childName: queueEntries.childName,
-        childGrade: queueEntries.childGrade,
-        parentSession: {
-          parentName: parentSessions.parentName
-        }
+        parentName: parentSessions.parentName
       }
     })
       .from(meetings)
