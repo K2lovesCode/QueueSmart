@@ -99,9 +99,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/parent/join-queue', async (req, res) => {
     try {
-      const { sessionId, teacherCode, childName, childGrade } = req.body;
+      const { sessionId, teacherCode, childName } = req.body;
       
-      console.log('Join queue request:', { sessionId, teacherCode, childName, childGrade });
+      console.log('Join queue request:', { sessionId, teacherCode, childName });
       
       const session = await storage.getParentSession(sessionId);
       if (!session) {
@@ -131,7 +131,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         teacherId: teacher.id,
         parentSessionId: session.id,
         childName,
-        childGrade,
         status: isFirstInQueue ? 'current' : 'waiting'
       });
 

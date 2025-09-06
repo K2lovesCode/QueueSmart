@@ -37,7 +37,6 @@ export const queueEntries = pgTable("queue_entries", {
   teacherId: varchar("teacher_id").references(() => teachers.id).notNull(),
   parentSessionId: varchar("parent_session_id").references(() => parentSessions.id).notNull(),
   childName: text("child_name").notNull(),
-  childGrade: text("child_grade").notNull(),
   status: text("status").notNull().default("waiting"), // waiting, next, current, completed, skipped
   position: integer("position").notNull(),
   joinedAt: timestamp("joined_at").defaultNow(),

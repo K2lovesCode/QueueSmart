@@ -119,7 +119,7 @@ export default function ParentInterface() {
 
   // Join queue mutation
   const joinQueueMutation = useMutation({
-    mutationFn: async (data: { teacherCode: string; childName: string; childGrade: string }) => {
+    mutationFn: async (data: { teacherCode: string; childName: string }) => {
       console.log('Joining queue with data:', { sessionId, ...data });
       const response = await apiRequest('POST', '/api/parent/join-queue', {
         sessionId,
@@ -134,7 +134,6 @@ export default function ParentInterface() {
     onSuccess: () => {
       setCurrentStep('dashboard');
       setChildName('');
-      setChildGrade('');
       setTeacherCode('');
       setSelectedTeacher(null);
       refetchQueues();
@@ -240,14 +239,12 @@ export default function ParentInterface() {
     
     console.log('Calling join queue mutation with:', {
       teacherCode: selectedTeacher.uniqueCode,
-      childName: childName.trim(),
-      childGrade: 'Not specified'
+      childName: childName.trim()
     });
     
     joinQueueMutation.mutate({
       teacherCode: selectedTeacher.uniqueCode,
-      childName: childName.trim(),
-      childGrade: 'Not specified'
+      childName: childName.trim()
     });
   };
 
