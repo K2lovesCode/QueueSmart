@@ -19,7 +19,6 @@ export const teachers = pgTable("teachers", {
   userId: varchar("user_id").references(() => users.id),
   name: text("name").notNull(),
   subject: text("subject").notNull(),
-  room: text("room"),
   uniqueCode: text("unique_code").notNull().unique(),
   qrCode: text("qr_code"), // Base64 encoded QR code
   isActive: boolean("is_active").default(true),

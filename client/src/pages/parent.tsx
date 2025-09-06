@@ -152,12 +152,12 @@ export default function ParentInterface() {
     }
   });
 
-  // Set initial step based on session
+  // Set initial step based on session (only on first load)
   useEffect(() => {
-    if (parentSession) {
+    if (parentSession && currentStep === 'welcome') {
       setCurrentStep(parentQueues.length > 0 ? 'dashboard' : 'join');
     }
-  }, [parentSession, parentQueues]);
+  }, [parentSession, parentQueues, currentStep]);
 
   const handleParentNameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
