@@ -15,7 +15,7 @@ import { Smartphone, Plus, Camera, Hash } from 'lucide-react';
 
 export default function ParentInterface() {
   const [location] = useLocation();
-  const [sessionId] = useState(() => localStorage.getItem('ptm_session_id') || crypto.randomUUID());
+  const [sessionId] = useState(() => crypto.randomUUID());
   const [currentStep, setCurrentStep] = useState<'welcome' | 'join' | 'child-info' | 'dashboard'>('welcome');
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
@@ -36,9 +36,9 @@ export default function ParentInterface() {
     }
   }, [location]);
 
-  // Store session ID in localStorage
+  // Each tab gets its own unique session - no localStorage sharing
   useEffect(() => {
-    localStorage.setItem('ptm_session_id', sessionId);
+    console.log('New tab session ID:', sessionId);
   }, [sessionId]);
 
   // Check if parent session exists
