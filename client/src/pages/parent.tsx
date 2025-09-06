@@ -144,11 +144,22 @@ export default function ParentInterface() {
       });
     },
     onError: (error) => {
-      toast({
-        title: 'Error joining queue',
-        description: error.message,
-        variant: 'destructive'
-      });
+      console.log('Join queue error:', error.message);
+      if (error.message.includes('already in this teacher\'s queue')) {
+        // Parent is already in queue, just go to dashboard
+        setCurrentStep('dashboard');
+        refetchQueues();
+        toast({
+          title: 'Already in queue',
+          description: 'You\'re already in this teacher\'s queue',
+        });
+      } else {
+        toast({
+          title: 'Error joining queue',
+          description: error.message,
+          variant: 'destructive'
+        });
+      }
     }
   });
 
