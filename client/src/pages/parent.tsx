@@ -15,7 +15,16 @@ import { Smartphone, Plus, Camera, Hash } from 'lucide-react';
 
 export default function ParentInterface() {
   const [location] = useLocation();
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId] = useState(() => {
+    // Device-based session: persistent per device, unique across devices
+    let deviceSessionId = localStorage.getItem('ptm_device_session');
+    if (!deviceSessionId) {
+      // Create a device-specific session ID
+      deviceSessionId = `device-${Date.now()}-${crypto.randomUUID()}`;
+      localStorage.setItem('ptm_device_session', deviceSessionId);
+    }
+    return deviceSessionId;
+  });
   const [currentStep, setCurrentStep] = useState<'welcome' | 'join' | 'child-info' | 'dashboard'>('welcome');
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
@@ -36,9 +45,9 @@ export default function ParentInterface() {
     }
   }, [location]);
 
-  // Each tab gets its own unique session - no localStorage sharing
+  // Device-based session: persistent across tabs and refreshes
   useEffect(() => {
-    console.log('New tab session ID:', sessionId);
+    console.log('Device session ID:', sessionId);
   }, [sessionId]);
 
   // Check if parent session exists
