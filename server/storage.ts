@@ -157,7 +157,6 @@ export class DatabaseStorage implements IStorage {
         id: teachers.id,
         name: teachers.name,
         subject: teachers.subject,
-        room: teachers.room,
         uniqueCode: teachers.uniqueCode
       }
     })

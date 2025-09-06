@@ -23,7 +23,6 @@ async function seedDatabase() {
         name: "Mrs. Johnson",
         subject: "Mathematics",
         grade: "Grade 3",
-        room: "201",
         uniqueCode: "JOHNSON3",
         email: "johnson@school.edu"
       },
@@ -31,7 +30,6 @@ async function seedDatabase() {
         name: "Mr. Smith",
         subject: "English Language Arts",
         grade: "Grade 4",
-        room: "105",
         uniqueCode: "SMITH4",
         email: "smith@school.edu"
       },
@@ -39,7 +37,6 @@ async function seedDatabase() {
         name: "Ms. Davis",
         subject: "Science",
         grade: "Grade 2",
-        room: "302",
         uniqueCode: "DAVIS2",
         email: "davis@school.edu"
       },
@@ -47,7 +44,6 @@ async function seedDatabase() {
         name: "Mrs. Wilson",
         subject: "Social Studies",
         grade: "Grade 5",
-        room: "208",
         uniqueCode: "WILSON5",
         email: "wilson@school.edu"
       }
@@ -79,7 +75,6 @@ async function seedDatabase() {
         name: teacherData.name,
         subject: teacherData.subject,
         grade: teacherData.grade,
-        room: teacherData.room,
         uniqueCode: teacherData.uniqueCode,
         qrCode: qrCodeUrl,
         isActive: true
