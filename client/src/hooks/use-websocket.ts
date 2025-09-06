@@ -18,47 +18,48 @@ export function useWebSocket(options: UseWebSocketOptions) {
   const ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    
-    ws.current = new WebSocket(wsUrl);
-
-    ws.current.onopen = () => {
-      setIsConnected(true);
+    function connectWebSocket() {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
       
-      // Identify this connection
-      ws.current?.send(JSON.stringify({
-        type: 'identify',
-        sessionId: options.sessionId,
-        userType: options.userType,
-        teacherId: options.teacherId,
-        parentSessionId: options.parentSessionId
-      }));
-    };
+      ws.current = new WebSocket(wsUrl);
 
-    ws.current.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        setLastMessage(message);
-      } catch (error) {
-        console.error('Failed to parse WebSocket message:', error);
-      }
-    };
-
-    ws.current.onclose = () => {
-      setIsConnected(false);
-      // Attempt to reconnect after a delay
-      setTimeout(() => {
-        if (!ws.current || ws.current.readyState === WebSocket.CLOSED) {
-          ws.current = new WebSocket(wsUrl);
+      ws.current.onopen = () => {
+        setIsConnected(true);
+        
+        // Identify this connection
+        if (ws.current?.readyState === WebSocket.OPEN) {
+          ws.current.send(JSON.stringify({
+            type: 'identify',
+            sessionId: options.sessionId,
+            userType: options.userType,
+            teacherId: options.teacherId,
+            parentSessionId: options.parentSessionId
+          }));
         }
-      }, 3000);
-    };
+      };
 
-    ws.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setIsConnected(false);
-    };
+      ws.current.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          setLastMessage(message);
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error);
+        }
+      };
+
+      ws.current.onclose = () => {
+        setIsConnected(false);
+      };
+
+      ws.current.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setIsConnected(false);
+      };
+    }
+
+    // Initial connection
+    connectWebSocket();
 
     return () => {
       ws.current?.close();

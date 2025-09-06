@@ -45,10 +45,6 @@ export default function ParentInterface() {
     }
   }, [location]);
 
-  // Device-based session: persistent across tabs and refreshes
-  useEffect(() => {
-    console.log('Device session ID:', sessionId);
-  }, [sessionId]);
 
   // Check if parent session exists
   const { data: parentSession } = useQuery({
