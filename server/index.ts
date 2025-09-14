@@ -3,6 +3,11 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+
+// CRITICAL FIX: Enable trust proxy for rate limiting to work properly
+// This is required for X-Forwarded-For headers in Replit environment
+app.set('trust proxy', true);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -61,6 +66,9 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
+  
+  // CRITICAL FIX: Ensure VITE_WS_PORT is properly set for WebSocket connections
+  process.env.VITE_WS_PORT = port.toString();
   server.listen({
     port,
     host: "0.0.0.0",
