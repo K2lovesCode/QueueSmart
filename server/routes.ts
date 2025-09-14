@@ -112,17 +112,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Teacher not found' });
       }
 
-      // Check if parent is already in ANY active queue (they can only be in one queue at a time)
-      const parentActiveQueues = await storage.getQueueEntriesForParent(session.id);
-      const activeEntries = parentActiveQueues.filter(entry => 
-        entry.status === 'waiting' || entry.status === 'next' || entry.status === 'current'
-      );
+      // Check if parent is already in this specific teacher's queue (including skipped entries)
+      const parentAlreadyInQueue = await storage.isParentInTeacherQueue(session.id, teacher.id);
       
-      if (activeEntries.length > 0) {
-        return res.status(400).json({ error: 'You are already in a queue. Please complete your current meeting before joining another queue.' });
+      if (parentAlreadyInQueue) {
+        return res.status(400).json({ error: 'You are already in this teacher\'s queue' });
       }
 
-      // Get existing queue for this teacher to determine position
       const existingQueue = await storage.getQueueEntriesForTeacher(teacher.id);
 
       const isFirstInQueue = existingQueue.length === 0;
@@ -134,25 +130,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: isFirstInQueue ? 'current' : 'waiting'
       });
 
-      // If first person, immediately start meeting
+      // If first person, check if parent is available for meeting
       if (isFirstInQueue) {
-        await storage.updateQueueEntry(queueEntry.id, {
-          status: 'current',
-          startedAt: new Date()
-        });
+        const parentInMeeting = await storage.isParentInActiveMeeting(session.id);
+        
+        if (parentInMeeting) {
+          // Parent is busy, mark as skipped and they'll get priority later
+          await storage.updateQueueEntry(queueEntry.id, {
+            status: 'skipped'
+          });
+          
+          // Notify parent their turn was skipped
+          broadcast({
+            type: 'status_update',
+            queueEntryId: queueEntry.id,
+            status: 'skipped',
+            message: 'Your turn was skipped because you are currently in another meeting. You will have priority when your current meeting ends.'
+          }, (ws) => ws.userType === 'parent' && ws.parentSessionId === session.id);
+        } else {
+          // Parent is available, use atomic meeting creation
+          const meetingResult = await storage.createMeetingIfTeacherFree({
+            teacherId: teacher.id,
+            queueEntryId: queueEntry.id
+          });
+          
+          if (meetingResult.success && meetingResult.meeting) {
+            await storage.updateQueueEntry(queueEntry.id, {
+              status: 'current',
+              startedAt: new Date()
+            });
 
-        await storage.createMeeting({
-          teacherId: teacher.id,
-          queueEntryId: queueEntry.id
-        });
-
-        // Notify parent their turn is now
-        broadcast({
-          type: 'status_update',
-          queueEntryId: queueEntry.id,
-          status: 'current',
-          message: 'YOUR TURN NOW!'
-        }, (ws) => ws.userType === 'parent' && ws.parentSessionId === session.id);
+            // Notify parent their turn is now
+            broadcast({
+              type: 'status_update',
+              queueEntryId: queueEntry.id,
+              status: 'current',
+              message: 'YOUR TURN NOW!'
+            }, (ws) => ws.userType === 'parent' && ws.parentSessionId === session.id);
+          } else {
+            // Race condition occurred, mark as waiting instead
+            await storage.updateQueueEntry(queueEntry.id, {
+              status: 'waiting'
+            });
+          }
+        }
       }
 
       // Broadcast queue update to teacher
@@ -245,7 +266,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           completedAt: new Date()
         });
 
-        // Get the completed entry to notify the parent
+        // Get the completed entry to notify the parent and process their other queues
         const completedEntry = await storage.getQueueEntry(currentMeeting.queueEntryId);
         if (completedEntry) {
           broadcast({
@@ -253,48 +274,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             queueEntryId: completedEntry.id,
             message: 'Your meeting has ended. Thank you!'
           }, (ws) => ws.userType === 'parent' && ws.parentSessionId === completedEntry.parentSessionId);
+          
+          // Process any skipped queues for this parent with broadcast function
+          await storage.processQueueAfterMeetingEnd(completedEntry.parentSessionId, broadcast);
         }
       }
 
-      // Get next parent in queue
-      const queue = await storage.getQueueEntriesForTeacher(teacherId);
-      if (queue.length > 0) {
-        const nextEntry = queue[0];
-        
-        // Update next entry to current
-        await storage.updateQueueEntry(nextEntry.id, {
-          status: 'current',
-          startedAt: new Date()
-        });
-
-        // Create new meeting
-        await storage.createMeeting({
-          teacherId,
-          queueEntryId: nextEntry.id
-        });
-
-        // Notify parent their turn is now
+      // Use the improved queue advancement logic
+      const advanceResult = await storage.advanceQueueForTeacher(teacherId, broadcast);
+      
+      if (advanceResult.meeting) {
+        // Broadcast meeting started to teacher and admin
         broadcast({
-          type: 'status_update',
-          queueEntryId: nextEntry.id,
-          status: 'current',
-          message: 'YOUR TURN NOW!'
-        }, (ws) => ws.userType === 'parent' && ws.parentSessionId === nextEntry.parentSessionId);
-
-        // Update the second person in queue to "next"
-        if (queue.length > 1) {
-          await storage.updateQueueEntry(queue[1].id, {
-            status: 'next',
-            notifiedAt: new Date()
-          });
-
-          broadcast({
-            type: 'status_update',
-            queueEntryId: queue[1].id,
-            status: 'next',
-            message: 'GETTING CLOSE'
-          }, (ws) => ws.userType === 'parent' && ws.parentSessionId === queue[1].parentSessionId);
-        }
+          type: 'meeting_started',
+          teacherId,
+          meeting: advanceResult.meeting
+        }, (ws) => (ws.userType === 'teacher' && ws.teacherId === teacherId) || ws.userType === 'admin');
       }
 
       // Broadcast updates to teacher and admin
@@ -356,26 +351,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: 'You have been removed from the queue'
         }, (ws) => ws.userType === 'parent' && ws.parentSessionId === skippedEntry.parentSessionId);
 
-        // Move to next person
-        if (queue.length > 1) {
-          const nextEntry = queue[1];
-          
-          await storage.updateQueueEntry(nextEntry.id, {
-            status: 'current',
-            startedAt: new Date()
-          });
-
-          await storage.createMeeting({
-            teacherId,
-            queueEntryId: nextEntry.id
-          });
-
+        // Use improved queue advancement to find next available parent
+        const advanceResult = await storage.advanceQueueForTeacher(teacherId, broadcast);
+        
+        if (advanceResult.meeting) {
+          // Broadcast meeting started to teacher and admin
           broadcast({
-            type: 'status_update',
-            queueEntryId: nextEntry.id,
-            status: 'current',
-            message: 'YOUR TURN NOW!'
-          }, (ws) => ws.userType === 'parent' && ws.parentSessionId === nextEntry.parentSessionId);
+            type: 'meeting_started',
+            teacherId,
+            meeting: advanceResult.meeting
+          }, (ws) => (ws.userType === 'teacher' && ws.teacherId === teacherId) || ws.userType === 'admin');
         }
       }
 
