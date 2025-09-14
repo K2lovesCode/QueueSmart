@@ -175,13 +175,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, password } = req.body;
       
-      // Simple password check - in production use proper hashing
-      if (password !== 'teacher123') {
+      const user = await storage.getUserByUsername(email);
+      if (!user || user.role !== 'teacher') {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
       
-      const user = await storage.getUserByUsername(email);
-      if (!user || user.role !== 'teacher') {
+      // Check password against stored user password (supports both default and generated passwords)
+      if (password !== user.password) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
       
@@ -493,6 +493,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
+
+  // Regenerate all QR codes and teacher codes
+  app.post('/api/admin/regenerate-codes', async (req, res) => {
+    try {
+      console.log('Starting regeneration of all codes...');
+      const teachers = await storage.getAllTeachers();
+      console.log(`Found ${teachers.length} teachers to update`);
+      
+      const updatedTeachers = [];
+      
+      // Process teachers sequentially to avoid unique key conflicts
+      for (const teacher of teachers) {
+        console.log(`Regenerating code for teacher: ${teacher.name}`);
+        
+        // Generate new unique code
+        const uniqueCode = await generateUniqueCode(teacher.name);
+        console.log(`Generated new code: ${uniqueCode} for ${teacher.name}`);
+        
+        // Generate new QR code
+        const qrCodeData = JSON.stringify({
+          type: 'teacher_queue',
+          code: uniqueCode,
+          teacher: teacher.name,
+          subject: teacher.subject
+        });
+        const qrCodeUrl = await QRCode.toDataURL(qrCodeData);
+        
+        // Update teacher with new codes
+        const updatedTeacher = await storage.updateTeacher(teacher.id, { 
+          uniqueCode, 
+          qrCode: qrCodeUrl 
+        });
+        
+        console.log(`Updated teacher ${teacher.name} with new code: ${updatedTeacher?.uniqueCode}`);
+        updatedTeachers.push(updatedTeacher);
+      }
+
+      console.log(`Successfully updated ${updatedTeachers.length} teachers`);
+
+      // Broadcast update to all admin users
+      broadcast({
+        type: 'codes_regenerated',
+        teachers: updatedTeachers
+      }, (ws) => ws.userType === 'admin');
+
+      res.json({ 
+        success: true, 
+        message: 'All codes regenerated successfully',
+        updatedCount: updatedTeachers.length,
+        teachers: updatedTeachers
+      });
+    } catch (error) {
+      console.error('Error regenerating codes:', error);
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Helper function to generate unique codes
+  async function generateUniqueCode(teacherName: string): Promise<string> {
+    const baseCode = teacherName
+      .toUpperCase()
+      .replace(/[^A-Z]/g, '')
+      .substring(0, 4);
+    
+    // Start with timestamp-based suffix for better uniqueness
+    const timestamp = Date.now().toString().slice(-4);
+    let code = baseCode + timestamp;
+    
+    let attempts = 0;
+    while (attempts < 20) {
+      const existingTeacher = await storage.getTeacherByCode(code);
+      if (!existingTeacher) {
+        return code;
+      }
+      
+      // Generate more random suffix
+      const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      code = baseCode + randomSuffix;
+      attempts++;
+    }
+    
+    // Final fallback to completely random code
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    code = '';
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    
+    return code;
+  }
 
   // Get teacher by code (for QR scanning)
   app.get('/api/teachers/by-code/:code', async (req, res) => {

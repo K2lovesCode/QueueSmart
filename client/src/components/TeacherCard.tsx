@@ -7,15 +7,13 @@ interface TeacherCardProps {
   currentMeeting?: Meeting & { queueEntry?: QueueEntry };
   nextParent?: QueueEntry;
   queueSize: number;
-  avgWaitTime?: number;
 }
 
 export default function TeacherCard({ 
   teacher, 
   currentMeeting, 
   nextParent, 
-  queueSize,
-  avgWaitTime = 0
+  queueSize
 }: TeacherCardProps) {
   const isHighQueue = queueSize >= 6;
   
@@ -55,8 +53,8 @@ export default function TeacherCard({
                 <div className="text-sm font-semibold text-green-700" data-testid="text-current-parent">
                   {(currentMeeting.queueEntry as any)?.parentSession?.parentName || 'Unknown Parent'}
                 </div>
-                <div className="text-xs text-green-600" data-testid="text-meeting-duration">
-                  {currentMeeting.startedAt ? formatDuration(currentMeeting.startedAt) : '0:00'}
+                <div className="text-xs text-green-600">
+                  Meeting in progress
                 </div>
               </>
             ) : (
@@ -94,12 +92,6 @@ export default function TeacherCard({
             )} data-testid="text-queue-size">
               {queueSize} waiting
             </div>
-            <div className={cn(
-              "text-xs",
-              isHighQueue ? "text-red-600" : "text-blue-600"
-            )} data-testid="text-avg-wait">
-              Avg wait: {avgWaitTime} min
-            </div>
           </div>
         </div>
       </CardContent>
@@ -107,12 +99,3 @@ export default function TeacherCard({
   );
 }
 
-function formatDuration(startTime: string | Date): string {
-  const start = new Date(startTime);
-  const now = new Date();
-  const diffMs = now.getTime() - start.getTime();
-  const diffSeconds = Math.floor(diffMs / 1000);
-  const minutes = Math.floor(diffSeconds / 60);
-  const seconds = diffSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}

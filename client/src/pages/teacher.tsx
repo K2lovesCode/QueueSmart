@@ -7,14 +7,13 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useWebSocket } from '@/hooks/use-websocket';
 import { apiRequest } from '@/lib/queryClient';
-import { Presentation, Check, Clock, UserX, Timer } from 'lucide-react';
+import { Presentation, Check, UserX } from 'lucide-react';
 
 export default function TeacherInterface() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [currentMeetingTimer, setCurrentMeetingTimer] = useState(0);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -71,21 +70,6 @@ export default function TeacherInterface() {
     }
   }, [lastMessage, refetchQueue, refetchMeeting]);
 
-  // Timer effect for current meeting
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (currentMeeting && currentMeeting.startedAt) {
-      interval = setInterval(() => {
-        const start = new Date(currentMeeting.startedAt);
-        const now = new Date();
-        const diffSeconds = Math.floor((now.getTime() - start.getTime()) / 1000);
-        setCurrentMeetingTimer(diffSeconds);
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [currentMeeting]);
 
   // End meeting mutation
   const endMeetingMutation = useMutation({
@@ -96,7 +80,6 @@ export default function TeacherInterface() {
     onSuccess: () => {
       refetchQueue();
       refetchMeeting();
-      setCurrentMeetingTimer(0);
       toast({
         title: 'Meeting ended',
         description: 'Next parent has been notified'
@@ -104,19 +87,6 @@ export default function TeacherInterface() {
     }
   });
 
-  // Extend meeting mutation
-  const extendMeetingMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest('POST', `/api/teacher/${teacherId}/extend-meeting`);
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: 'Meeting extended',
-        description: 'Next parent has been notified of the delay'
-      });
-    }
-  });
 
   // Skip no-show mutation
   const skipNoShowMutation = useMutation({
@@ -146,18 +116,12 @@ export default function TeacherInterface() {
     setTeacherId(null);
     setEmail('');
     setPassword('');
-    setCurrentMeetingTimer(0);
     toast({
       title: 'Logged out',
       description: 'You have been successfully logged out'
     });
   };
 
-  const formatTimer = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
-  };
 
   if (!isLoggedIn) {
     return (
@@ -204,9 +168,10 @@ export default function TeacherInterface() {
     );
   }
 
-  const currentParent = queue.find((entry: any) => entry.status === 'current');
-  const nextParent = queue.find((entry: any) => entry.status === 'next') || queue.find((entry: any) => entry.status === 'waiting');
-  const waitingParents = queue.filter((entry: any) => entry.status === 'waiting' && entry.id !== nextParent?.id);
+  const queueArray = Array.isArray(queue) ? queue : [];
+  const currentParent = queueArray.find((entry: any) => entry.status === 'current');
+  const nextParent = queueArray.find((entry: any) => entry.status === 'next') || queueArray.find((entry: any) => entry.status === 'waiting');
+  const waitingParents = queueArray.filter((entry: any) => entry.status === 'waiting' && entry.id !== nextParent?.id);
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -217,17 +182,17 @@ export default function TeacherInterface() {
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-semibold text-foreground" data-testid="text-teacher-name">
-                  {teacher?.name || 'Loading...'}
+                  {(teacher as any)?.name || 'Loading...'}
                 </h2>
                 <p className="text-muted-foreground" data-testid="text-teacher-subject">
-                  {teacher?.subject || ''}
+                  {(teacher as any)?.subject || ''}
                 </p>
               </div>
               <div className="flex items-center space-x-4">
                 <div className="text-right">
                   <div className="text-sm text-muted-foreground">Queue Code</div>
                   <div className="text-xl font-bold text-primary" data-testid="text-queue-code">
-                    {teacher?.uniqueCode || ''}
+                    {(teacher as any)?.uniqueCode || ''}
                   </div>
                 </div>
                 <Button 
@@ -256,10 +221,10 @@ export default function TeacherInterface() {
                 {currentMeeting ? (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                     <div className="text-2xl font-semibold text-green-700" data-testid="text-current-parent">
-                      {currentMeeting.queueEntry?.parentSession?.parentName || 'Unknown Parent'}
+                      {(currentMeeting as any)?.queueEntry?.parentName || 'Unknown Parent'}
                     </div>
                     <div className="text-green-600" data-testid="text-current-student">
-                      Student: {currentMeeting.queueEntry?.childName || 'Unknown Student'}
+                      Student: {(currentMeeting as any)?.queueEntry?.childName || 'Unknown Student'}
                     </div>
                   </div>
                 ) : (
@@ -269,10 +234,6 @@ export default function TeacherInterface() {
                     </div>
                   </div>
                 )}
-                <div className="timer-display text-3xl font-bold text-foreground" data-testid="text-timer">
-                  {formatTimer(currentMeetingTimer)}
-                </div>
-                <div className="text-sm text-muted-foreground">Meeting duration</div>
               </div>
             </CardContent>
           </Card>
@@ -326,7 +287,7 @@ export default function TeacherInterface() {
         <Card className="shadow-lg" data-testid="card-meeting-controls">
           <CardContent className="p-6">
             <h3 className="text-lg font-semibold text-foreground mb-4">Meeting Controls</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Button 
                 onClick={() => endMeetingMutation.mutate()}
                 disabled={endMeetingMutation.isPending || !currentMeeting}
@@ -335,15 +296,6 @@ export default function TeacherInterface() {
               >
                 <Check className="mr-2 h-4 w-4" />
                 End Meeting
-              </Button>
-              <Button 
-                onClick={() => extendMeetingMutation.mutate()}
-                disabled={extendMeetingMutation.isPending || !currentMeeting}
-                className="bg-yellow-500 hover:bg-yellow-600 py-3 px-6 flex items-center justify-center"
-                data-testid="button-extend-meeting"
-              >
-                <Clock className="mr-2 h-4 w-4" />
-                Extend (5 min)
               </Button>
               <Button 
                 onClick={() => skipNoShowMutation.mutate()}

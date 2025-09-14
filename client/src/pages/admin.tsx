@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useWebSocket } from '@/hooks/use-websocket';
 import TeacherCard from '@/components/TeacherCard';
 import { apiRequest } from '@/lib/queryClient';
-import { Shield, Settings, Download, Plus, X, Printer, Copy, Edit3, Check, RotateCcw } from 'lucide-react';
+import { Shield, Settings, Download, Plus, X, Printer, Copy, Edit3, Check, RotateCcw, RefreshCw } from 'lucide-react';
 
 export default function AdminInterface() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -110,6 +110,35 @@ export default function AdminInterface() {
     onError: (error) => {
       toast({
         title: 'Error adding teacher',
+        description: error.message,
+        variant: 'destructive'
+      });
+    }
+  });
+
+  // Regenerate all QR codes and teacher codes mutation
+  const regenerateAllCodesMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', '/api/admin/regenerate-codes');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      console.log('Regeneration successful:', data);
+      // Force refetch of teachers data
+      refetchTeachers();
+      // Invalidate all teacher-related queries
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/teachers'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/teachers-with-queues'] });
+      
+      toast({
+        title: 'Codes regenerated successfully',
+        description: `Updated ${data.updatedCount} teacher codes and QR codes with unique values`
+      });
+    },
+    onError: (error) => {
+      console.error('Regeneration error:', error);
+      toast({
+        title: 'Error regenerating codes',
         description: error.message,
         variant: 'destructive'
       });
@@ -410,7 +439,19 @@ Instructions:
 
                 {/* Generated Codes Preview */}
                 <div>
-                  <h4 className="text-lg font-medium text-foreground mb-4">Generated Codes</h4>
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="text-lg font-medium text-foreground">Generated Codes</h4>
+                    <Button 
+                      onClick={() => regenerateAllCodesMutation.mutate()}
+                      disabled={regenerateAllCodesMutation.isPending}
+                      variant="outline"
+                      size="sm"
+                      data-testid="button-regenerate-all-codes"
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      {regenerateAllCodesMutation.isPending ? 'Regenerating...' : 'Regenerate All Codes'}
+                    </Button>
+                  </div>
                   <div className="space-y-4" data-testid="container-generated-codes">
                     {(teachers as any[]).map((teacher: any) => (
                       <div key={teacher.id} className="border border-border rounded-lg p-4">
@@ -612,7 +653,6 @@ Instructions:
                   currentMeeting={teacher.currentMeeting}
                   nextParent={teacher.nextParent}
                   queueSize={teacher.queueSize}
-                  avgWaitTime={teacher.avgWaitTime}
                 />
               ))}
             </div>
