@@ -64,7 +64,7 @@ const authLimiter = rateLimit({
 function generateWebSocketToken(sessionId: string, userType: 'parent' | 'teacher' | 'admin', userId?: string): string {
   return jwt.sign(
     { sessionId, userType, userId, iat: Date.now() },
-    JWT_SECRET,
+    JWT_SECRET!,
     { expiresIn: '24h' }
   );
 }
@@ -72,7 +72,7 @@ function generateWebSocketToken(sessionId: string, userType: 'parent' | 'teacher
 // Verify WebSocket JWT token
 function verifyWebSocketToken(token: string): any {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, JWT_SECRET!);
   } catch (error) {
     return null;
   }
@@ -479,7 +479,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = adminLoginSchema.parse(req.body);
       
       const user = await storage.getUserByUsername(validatedData.email);
-      if (!user || user.password !== validatedData.password || user.role !== 'admin') {
+      if (!user || user.role !== 'admin') {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      
+      // CRITICAL SECURITY FIX: Use bcrypt to verify hashed passwords
+      const isPasswordValid = await bcrypt.compare(validatedData.password, user.password);
+      if (!isPasswordValid) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 

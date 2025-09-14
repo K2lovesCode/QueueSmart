@@ -5,10 +5,11 @@ import {
   type InsertQueueEntry, type Meeting, type InsertMeeting
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, asc, sql, isNull } from "drizzle-orm";
+import { eq, and, desc, asc, sql, isNull } from "drizzle-orm";\nimport bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 
-export interface IStorage {
+import { eq, and, desc, asc, sql, isNull } from "drizzle-orm";
+import bcrypt from "bcryptjs";
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
