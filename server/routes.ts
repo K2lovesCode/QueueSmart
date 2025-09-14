@@ -112,13 +112,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Teacher not found' });
       }
 
-      // Check if parent is already in this teacher's queue
-      const existingQueue = await storage.getQueueEntriesForTeacher(teacher.id);
-      const parentAlreadyInQueue = existingQueue.some(entry => entry.parentSession?.id === session.id);
+      // Check if parent is already in ANY active queue (they can only be in one queue at a time)
+      const parentActiveQueues = await storage.getQueueEntriesForParent(session.id);
+      const activeEntries = parentActiveQueues.filter(entry => 
+        entry.status === 'waiting' || entry.status === 'next' || entry.status === 'current'
+      );
       
-      if (parentAlreadyInQueue) {
-        return res.status(400).json({ error: 'You are already in this teacher\'s queue' });
+      if (activeEntries.length > 0) {
+        return res.status(400).json({ error: 'You are already in a queue. Please complete your current meeting before joining another queue.' });
       }
+
+      // Get existing queue for this teacher to determine position
+      const existingQueue = await storage.getQueueEntriesForTeacher(teacher.id);
 
       const isFirstInQueue = existingQueue.length === 0;
 
