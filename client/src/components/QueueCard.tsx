@@ -1,11 +1,17 @@
+import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { Edit2, Check, X } from 'lucide-react';
 
 interface QueueCardProps {
   status: 'waiting' | 'next' | 'current' | 'skipped';
   teacherName: string;
   subject: string;
   childName: string;
+  queueEntryId: string;
+  onUpdateChildName?: (entryId: string, newChildName: string) => Promise<void>;
   className?: string;
 }
 
@@ -41,9 +47,33 @@ export default function QueueCard({
   teacherName, 
   subject, 
   childName, 
+  queueEntryId,
+  onUpdateChildName,
   className 
 }: QueueCardProps) {
   const config = statusConfig[status];
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedChildName, setEditedChildName] = useState(childName);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const handleSaveChildName = async () => {
+    if (!editedChildName.trim() || !onUpdateChildName) return;
+    
+    setIsUpdating(true);
+    try {
+      await onUpdateChildName(queueEntryId, editedChildName.trim());
+      setIsEditing(false);
+    } catch (error) {
+      setEditedChildName(childName); // Revert on error
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedChildName(childName);
+    setIsEditing(false);
+  };
 
   return (
     <Card className={cn("overflow-hidden", className)} data-testid={`card-queue-${status}`}>
@@ -64,8 +94,62 @@ export default function QueueCard({
             {subject}
           </span>
         </div>
-        <div className="text-sm text-muted-foreground">
-          Student: <span data-testid="text-child-name">{childName}</span>
+        <div className="flex items-center gap-2">
+          <div className="text-sm text-muted-foreground flex-1">
+            Student: {isEditing ? (
+              <Input
+                value={editedChildName}
+                onChange={(e) => setEditedChildName(e.target.value)}
+                className="inline-block w-auto min-w-[120px] h-6 text-sm"
+                data-testid="input-edit-child-name"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveChildName();
+                  if (e.key === 'Escape') handleCancelEdit();
+                }}
+              />
+            ) : (
+              <span data-testid="text-child-name">{childName}</span>
+            )}
+          </div>
+          {onUpdateChildName && (
+            <div className="flex items-center gap-1">
+              {isEditing ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleSaveChildName}
+                    disabled={isUpdating || !editedChildName.trim()}
+                    data-testid="button-save-child-name"
+                    className="h-6 w-6 p-0"
+                  >
+                    <Check className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleCancelEdit}
+                    disabled={isUpdating}
+                    data-testid="button-cancel-edit"
+                    className="h-6 w-6 p-0"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setIsEditing(true)}
+                  data-testid="button-edit-child-name"
+                  className="h-6 w-6 p-0"
+                >
+                  <Edit2 className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
