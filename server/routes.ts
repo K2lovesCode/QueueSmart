@@ -196,56 +196,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update child name for queue entry
-  app.put('/api/parent/queue-entry/:entryId/child-name', async (req, res) => {
-    try {
-      const { entryId } = req.params;
-      const { childName, sessionId } = req.body;
-      
-      if (!childName || !childName.trim()) {
-        return res.status(400).json({ error: 'Child name is required' });
-      }
-      
-      // Get the queue entry to verify ownership
-      const entry = await storage.getQueueEntry(entryId);
-      if (!entry) {
-        return res.status(404).json({ error: 'Queue entry not found' });
-      }
-      
-      // Verify parent session ownership
-      const parentSession = await storage.getParentSession(sessionId);
-      if (!parentSession || entry.parentSessionId !== parentSession.id) {
-        return res.status(403).json({ error: 'Not authorized to update this entry' });
-      }
-      
-      // Update the child name
-      const updatedEntry = await storage.updateQueueEntry(entryId, {
-        childName: childName.trim()
-      });
-      
-      if (!updatedEntry) {
-        return res.status(500).json({ error: 'Failed to update child name' });
-      }
-      
-      // Broadcast update to relevant parties
-      broadcast({
-        type: 'queue_update',
-        teacherId: entry.teacherId,
-        queueEntry: updatedEntry
-      }, (ws) => ws.userType === 'teacher' && ws.teacherId === entry.teacherId);
-      
-      broadcast({
-        type: 'queue_update',
-        teacherId: entry.teacherId
-      }, (ws) => ws.userType === 'admin');
-      
-      res.json(updatedEntry);
-    } catch (error) {
-      console.error('Error updating child name:', error);
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
   // Teacher Routes
   app.post('/api/teacher/login', async (req, res) => {
     try {

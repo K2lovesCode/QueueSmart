@@ -67,7 +67,7 @@ export default function ParentInterface() {
   const { lastMessage } = useWebSocket({
     sessionId,
     userType: 'parent',
-    parentSessionId: (parentSession as any)?.id || ''
+    parentSessionId: parentSession?.id || ''
   });
 
   // Handle WebSocket messages
@@ -155,7 +155,7 @@ export default function ParentInterface() {
         refetchQueues();
         toast({
           title: 'Already in queue',
-          description: 'You\'re already in this teacher\'s queue. You can edit your child\'s name from the queue card.',
+          description: 'You\'re already in this teacher\'s queue',
         });
       } else {
         toast({
@@ -166,39 +166,6 @@ export default function ParentInterface() {
       }
     }
   });
-
-  // Update child name mutation
-  const updateChildNameMutation = useMutation({
-    mutationFn: async ({ entryId, childName }: { entryId: string; childName: string }) => {
-      const response = await apiRequest('PUT', `/api/parent/queue-entry/${entryId}/child-name`, {
-        childName,
-        sessionId
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update child name');
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      refetchQueues();
-      toast({
-        title: 'Child name updated',
-        description: 'The child name has been successfully updated'
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: 'Error updating child name',
-        description: error.message,
-        variant: 'destructive'
-      });
-    }
-  });
-
-  const handleUpdateChildName = async (entryId: string, newChildName: string) => {
-    await updateChildNameMutation.mutateAsync({ entryId, childName: newChildName });
-  };
 
   // Set initial step based on session (only on first load)
   useEffect(() => {
@@ -452,12 +419,10 @@ export default function ParentInterface() {
           {parentQueues.map((queue: any) => (
             <QueueCard
               key={queue.id}
-              queueEntryId={queue.id}
               status={queue.status as 'waiting' | 'next' | 'current' | 'skipped'}
               teacherName={queue.teacher?.name || 'Teacher'}
               subject={queue.teacher?.subject || ''}
               childName={queue.childName}
-              onUpdateChildName={handleUpdateChildName}
             />
           ))}
         </div>
