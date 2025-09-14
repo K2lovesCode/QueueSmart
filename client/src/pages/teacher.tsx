@@ -295,7 +295,7 @@ export default function TeacherInterface() {
                 data-testid="button-end-meeting"
               >
                 <Check className="mr-2 h-4 w-4" />
-                End Meeting
+                {endMeetingMutation.isPending ? 'Ending...' : 'End Meeting'}
               </Button>
               <Button 
                 onClick={() => skipNoShowMutation.mutate()}
@@ -305,7 +305,7 @@ export default function TeacherInterface() {
                 data-testid="button-skip-no-show"
               >
                 <UserX className="mr-2 h-4 w-4" />
-                Skip / No-Show
+                {skipNoShowMutation.isPending ? 'Skipping...' : 'Skip / No-Show'}
               </Button>
             </div>
             <div className="mt-4 text-sm text-muted-foreground text-center">

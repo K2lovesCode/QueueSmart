@@ -333,6 +333,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/teacher/:teacherId/skip-no-show', async (req, res) => {
     try {
       const teacherId = req.params.teacherId;
+      
+      // Check if there's an active meeting and end it first
+      const currentMeeting = await storage.getCurrentMeeting(teacherId);
+      if (currentMeeting) {
+        await storage.endMeeting(currentMeeting.id);
+      }
+      
       const queue = await storage.getQueueEntriesForTeacher(teacherId);
       
       if (queue.length > 0) {
@@ -351,6 +358,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: 'You have been removed from the queue'
         }, (ws) => ws.userType === 'parent' && ws.parentSessionId === skippedEntry.parentSessionId);
 
+        // CRITICAL FIX: Process parent's other skipped entries to reactivate them
+        await storage.processQueueAfterMeetingEnd(skippedEntry.parentSessionId, broadcast);
+
         // Use improved queue advancement to find next available parent
         const advanceResult = await storage.advanceQueueForTeacher(teacherId, broadcast);
         
@@ -363,6 +373,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }, (ws) => (ws.userType === 'teacher' && ws.teacherId === teacherId) || ws.userType === 'admin');
         }
       }
+
+      // Broadcast meeting ended for UI consistency (matches end-meeting route)
+      broadcast({
+        type: 'meeting_ended',
+        teacherId
+      }, (ws) => (ws.userType === 'teacher' && ws.teacherId === teacherId) || ws.userType === 'admin');
 
       broadcast({
         type: 'queue_update',
