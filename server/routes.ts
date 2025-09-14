@@ -307,17 +307,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Teacher Routes
-  app.post('/api/teacher/login', async (req, res) => {
+  app.post('/api/teacher/login', authLimiter, async (req, res) => {
     try {
-      const { email, password } = req.body;
+      // Validate input data with proper sanitization
+      const validatedData = teacherLoginSchema.parse(req.body);
       
-      const user = await storage.getUserByUsername(email);
+      const user = await storage.getUserByUsername(validatedData.email);
       if (!user || user.role !== 'teacher') {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
       
       // Check password against stored user password (supports both default and generated passwords)
-      if (password !== user.password) {
+      if (validatedData.password !== user.password) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
       
@@ -325,9 +326,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!teacher) {
         return res.status(404).json({ error: 'Teacher profile not found' });
       }
+
+      // Generate WebSocket authentication token for teacher
+      const wsToken = generateWebSocketToken(teacher.id, 'teacher', teacher.id);
       
-      res.json({ user, teacher });
+      res.json({ user, teacher, wsToken });
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: 'Invalid input', details: error.errors });
+      }
       res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
@@ -458,6 +465,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin Routes
+  app.post('/api/admin/login', authLimiter, async (req, res) => {
+    try {
+      // Validate admin login input
+      const validatedData = adminLoginSchema.parse(req.body);
+      
+      const user = await storage.getUserByUsername(validatedData.email);
+      if (!user || user.password !== validatedData.password || user.role !== 'admin') {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      // Generate WebSocket authentication token for admin
+      const wsToken = generateWebSocketToken(user.id, 'admin', user.id);
+
+      res.json({
+        user: {
+          id: user.id,
+          username: user.username,
+          role: user.role
+        },
+        wsToken
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: 'Invalid input', details: error.errors });
+      }
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+  
   app.get('/api/admin/teachers', async (req, res) => {
     try {
       const teachers = await storage.getAllTeachers();

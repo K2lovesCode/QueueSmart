@@ -76,7 +76,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTeacherByCode(code: string): Promise<Teacher | undefined> {
-    const [teacher] = await db.select().from(teachers).where(eq(teachers.uniqueCode, code));
+    // CASE SENSITIVITY FIX: Normalize teacher codes to uppercase for matching
+    const normalizedCode = code.toUpperCase().trim();
+    const [teacher] = await db.select().from(teachers).where(eq(teachers.uniqueCode, normalizedCode));
     return teacher || undefined;
   }
 
