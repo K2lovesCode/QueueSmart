@@ -290,7 +290,7 @@ export default function TeacherInterface() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Button 
                 onClick={() => endMeetingMutation.mutate()}
-                disabled={endMeetingMutation.isPending || !currentMeeting}
+                disabled={endMeetingMutation.isPending || skipNoShowMutation.isPending || !currentMeeting}
                 className="py-3 px-6 flex items-center justify-center"
                 data-testid="button-end-meeting"
               >
@@ -299,7 +299,7 @@ export default function TeacherInterface() {
               </Button>
               <Button 
                 onClick={() => skipNoShowMutation.mutate()}
-                disabled={skipNoShowMutation.isPending}
+                disabled={skipNoShowMutation.isPending || endMeetingMutation.isPending || !currentMeeting}
                 variant="destructive"
                 className="py-3 px-6 flex items-center justify-center"
                 data-testid="button-skip-no-show"
