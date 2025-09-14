@@ -126,6 +126,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let initialStatus = 'waiting';
       if (isFirstInQueue) {
         const parentInMeeting = await storage.isParentInActiveMeeting(session.id);
+        console.log(`[JOIN-QUEUE DEBUG] Teacher: ${teacher.name}, Parent: ${session.id}, IsFirstInQueue: ${isFirstInQueue}, ParentInMeeting: ${parentInMeeting}`);
         initialStatus = parentInMeeting ? 'skipped' : 'current';
       }
 
@@ -143,11 +144,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           queueEntryId: queueEntry.id
         });
         
+        console.log(`[MEETING CREATION DEBUG] Teacher: ${teacher.name}, Success: ${meetingResult.success}, Meeting ID: ${meetingResult.meeting?.id}`);
+        
         if (meetingResult.success && meetingResult.meeting) {
           await storage.updateQueueEntry(queueEntry.id, {
             status: 'current',
             startedAt: new Date()
           });
+
+          console.log(`[MEETING STARTED] Teacher: ${teacher.name}, Parent: ${session.id}, Meeting: ${meetingResult.meeting.id}`);
 
           // Notify parent their turn is now
           broadcast({
@@ -157,6 +162,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             message: 'YOUR TURN NOW!'
           }, (ws) => ws.userType === 'parent' && ws.parentSessionId === session.id);
         } else {
+          console.log(`[MEETING FAILED] Teacher: ${teacher.name}, Parent: ${session.id}, Marking as waiting`);
           // Race condition occurred, mark as waiting instead
           await storage.updateQueueEntry(queueEntry.id, {
             status: 'waiting'
