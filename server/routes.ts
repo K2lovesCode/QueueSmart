@@ -120,60 +120,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const existingQueue = await storage.getQueueEntriesForTeacher(teacher.id);
-
       const isFirstInQueue = existingQueue.length === 0;
+
+      // CRITICAL FIX: Check if parent is in active meeting BEFORE creating queue entry
+      let initialStatus = 'waiting';
+      if (isFirstInQueue) {
+        const parentInMeeting = await storage.isParentInActiveMeeting(session.id);
+        initialStatus = parentInMeeting ? 'skipped' : 'current';
+      }
 
       const queueEntry = await storage.createQueueEntry({
         teacherId: teacher.id,
         parentSessionId: session.id,
         childName,
-        status: isFirstInQueue ? 'current' : 'waiting'
+        status: initialStatus
       });
 
-      // If first person, check if parent is available for meeting
-      if (isFirstInQueue) {
-        const parentInMeeting = await storage.isParentInActiveMeeting(session.id);
+      // If first person and parent is available, try to create meeting
+      if (isFirstInQueue && initialStatus === 'current') {
+        const meetingResult = await storage.createMeetingIfTeacherFree({
+          teacherId: teacher.id,
+          queueEntryId: queueEntry.id
+        });
         
-        if (parentInMeeting) {
-          // Parent is busy, mark as skipped and they'll get priority later
+        if (meetingResult.success && meetingResult.meeting) {
           await storage.updateQueueEntry(queueEntry.id, {
-            status: 'skipped'
+            status: 'current',
+            startedAt: new Date()
           });
-          
-          // Notify parent their turn was skipped
+
+          // Notify parent their turn is now
           broadcast({
             type: 'status_update',
             queueEntryId: queueEntry.id,
-            status: 'skipped',
-            message: 'Your turn was skipped because you are currently in another meeting. You will have priority when your current meeting ends.'
+            status: 'current',
+            message: 'YOUR TURN NOW!'
           }, (ws) => ws.userType === 'parent' && ws.parentSessionId === session.id);
         } else {
-          // Parent is available, use atomic meeting creation
-          const meetingResult = await storage.createMeetingIfTeacherFree({
-            teacherId: teacher.id,
-            queueEntryId: queueEntry.id
+          // Race condition occurred, mark as waiting instead
+          await storage.updateQueueEntry(queueEntry.id, {
+            status: 'waiting'
           });
-          
-          if (meetingResult.success && meetingResult.meeting) {
-            await storage.updateQueueEntry(queueEntry.id, {
-              status: 'current',
-              startedAt: new Date()
-            });
-
-            // Notify parent their turn is now
-            broadcast({
-              type: 'status_update',
-              queueEntryId: queueEntry.id,
-              status: 'current',
-              message: 'YOUR TURN NOW!'
-            }, (ws) => ws.userType === 'parent' && ws.parentSessionId === session.id);
-          } else {
-            // Race condition occurred, mark as waiting instead
-            await storage.updateQueueEntry(queueEntry.id, {
-              status: 'waiting'
-            });
-          }
         }
+      } else if (isFirstInQueue && initialStatus === 'skipped') {
+        // Notify parent their turn was skipped
+        broadcast({
+          type: 'status_update',
+          queueEntryId: queueEntry.id,
+          status: 'skipped',
+          message: 'Your turn was skipped because you are currently in another meeting. You will have priority when your current meeting ends.'
+        }, (ws) => ws.userType === 'parent' && ws.parentSessionId === session.id);
       }
 
       // Broadcast queue update to teacher
