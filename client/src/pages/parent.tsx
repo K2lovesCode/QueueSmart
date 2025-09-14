@@ -52,22 +52,22 @@ export default function ParentInterface() {
     enabled: !!sessionId
   });
 
-  // Get parent's queues
+  // Get parent's queues - using sessionId not parentSession.id
   const { data: allQueues = [], refetch: refetchQueues } = useQuery({
-    queryKey: ['/api/parent', sessionId, 'queues'],
-    enabled: !!parentSession
+    queryKey: [`/api/parent/${sessionId}/queues`],
+    enabled: !!parentSession && !!sessionId
   });
 
   // Filter to only show active queues (not completed or skipped)
-  const parentQueues = (allQueues || []).filter((queue: any) =>
+  const parentQueues = Array.isArray(allQueues) ? allQueues.filter((queue: any) =>
     queue.status === 'waiting' || queue.status === 'next' || queue.status === 'current'
-  );
+  ) : [];
 
   // WebSocket for real-time updates
   const { lastMessage } = useWebSocket({
     sessionId,
     userType: 'parent',
-    parentSessionId: parentSession?.id
+    parentSessionId: parentSession?.id || ''
   });
 
   // Handle WebSocket messages
