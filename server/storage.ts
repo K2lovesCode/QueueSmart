@@ -233,50 +233,37 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createQueueEntry(insertEntry: InsertQueueEntry): Promise<QueueEntry> {
-    const maxRetries = 3;
-    let lastError: Error | null = null;
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // CRITICAL FIX: Use SERIALIZABLE transaction with proper locking
+    return await db.transaction(async (tx) => {
       try {
-        return await db.transaction(async (tx) => {
-          // Get next position with row lock to prevent concurrent position conflicts
-          const positions = await tx.select({ position: queueEntries.position })
-            .from(queueEntries)
-            .where(and(
-              eq(queueEntries.teacherId, insertEntry.teacherId),
-              sql`${queueEntries.status} IN ('waiting', 'next', 'current')`
-            ))
-            .orderBy(desc(queueEntries.position))
-            .limit(1)
-            .for('update');
-          
-          const nextPosition = positions.length > 0 ? positions[0].position + 1 : 1;
-          
-          // Insert with calculated position atomically
-          const [entry] = await tx.insert(queueEntries).values({
-            ...insertEntry,
-            position: nextPosition,
-          }).returning();
-          
-          return entry;
-        });
+        // SERIALIZABLE isolation prevents all race conditions
+        // SELECT FOR UPDATE locks the position sequence to prevent duplicates
+        const positions = await tx.select({ position: queueEntries.position })
+          .from(queueEntries)
+          .where(and(
+            eq(queueEntries.teacherId, insertEntry.teacherId),
+            sql`${queueEntries.status} IN ('waiting', 'next', 'current')`
+          ))
+          .orderBy(desc(queueEntries.position))
+          .limit(1)
+          .for('update');
+        
+        const nextPosition = positions.length > 0 ? positions[0].position + 1 : 1;
+        
+        // Insert with calculated position atomically
+        const [entry] = await tx.insert(queueEntries).values({
+          ...insertEntry,
+          position: nextPosition,
+        }).returning();
+        
+        return entry;
       } catch (error) {
-        lastError = error instanceof Error ? error : new Error('Unknown error');
-        
-        // Check if this is a unique constraint violation (Postgres error code 23505)
-        if (error instanceof Error && (error.message.includes('unique') || error.message.includes('23505')) && attempt < maxRetries) {
-          // Add exponential backoff delay with jitter before retry
-          const baseDelay = Math.pow(2, attempt - 1) * 100; // 100ms, 200ms, 400ms
-          const jitter = Math.random() * 50; // Add 0-50ms random jitter
-          await new Promise(resolve => setTimeout(resolve, baseDelay + jitter));
-          continue;
-        }
-        
+        console.error('Error creating queue entry:', error);
         throw error;
       }
-    }
-    
-    throw lastError || new Error('Failed to create queue entry after retries');
+    }, {
+      isolationLevel: 'serializable' // CRITICAL: Prevents all concurrent read-write anomalies
+    });
   }
 
   async updateQueueEntry(id: string, updates: Partial<QueueEntry>): Promise<QueueEntry | undefined> {

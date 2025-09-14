@@ -5,17 +5,78 @@ import { storage } from "./storage";
 import { insertTeacherSchema, insertParentSessionSchema, insertQueueEntrySchema, insertMeetingSchema } from "@shared/schema";
 import QRCode from "qrcode";
 import { nanoid } from "nanoid";
+import jwt from "jsonwebtoken";
+import rateLimit from "express-rate-limit";
+import { z } from "zod";
 
 interface ExtendedWebSocket extends WebSocket {
   sessionId?: string;
   userType?: 'parent' | 'teacher' | 'admin';
   teacherId?: string;
   parentSessionId?: string;
+  isAuthenticated?: boolean;
+}
+
+// JWT secret for WebSocket authentication
+const JWT_SECRET = process.env.JWT_SECRET || 'default-dev-secret-change-in-production';
+
+// Validation schemas
+const parentSessionSchema = z.object({
+  parentName: z.string().min(1).max(100).trim()
+});
+
+const joinQueueSchema = z.object({
+  teacherCode: z.string().min(4).max(20).trim().toUpperCase(),
+  childName: z.string().min(1).max(100).trim()
+});
+
+const teacherLoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1)
+});
+
+const adminLoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1)
+});
+
+// Rate limiting middleware
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: { error: 'Too many requests from this IP, please try again later.' }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 auth requests per windowMs
+  message: { error: 'Too many authentication attempts, please try again later.' }
+});
+
+// JWT token generation for WebSocket authentication
+function generateWebSocketToken(sessionId: string, userType: 'parent' | 'teacher' | 'admin', userId?: string): string {
+  return jwt.sign(
+    { sessionId, userType, userId, iat: Date.now() },
+    JWT_SECRET,
+    { expiresIn: '24h' }
+  );
+}
+
+// Verify WebSocket JWT token
+function verifyWebSocketToken(token: string): any {
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (error) {
+    return null;
+  }
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  
+  // Apply general rate limiting to all routes
+  app.use(generalLimiter);
 
   // WebSocket connections management
   const connections = new Map<string, ExtendedWebSocket>();
@@ -23,33 +84,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
   wss.on('connection', (ws: ExtendedWebSocket, req) => {
     const connectionId = nanoid();
     connections.set(connectionId, ws);
+    ws.isAuthenticated = false;
 
     ws.on('message', async (data) => {
       try {
         const message = JSON.parse(data.toString());
         
         switch (message.type) {
-          case 'identify':
-            ws.sessionId = message.sessionId;
-            ws.userType = message.userType;
-            ws.teacherId = message.teacherId;
-            ws.parentSessionId = message.parentSessionId;
+          case 'authenticate':
+            // Secure WebSocket authentication using JWT token
+            const tokenPayload = verifyWebSocketToken(message.token);
+            if (tokenPayload) {
+              ws.sessionId = tokenPayload.sessionId;
+              ws.userType = tokenPayload.userType;
+              ws.teacherId = tokenPayload.userId;
+              ws.parentSessionId = tokenPayload.sessionId;
+              ws.isAuthenticated = true;
+              
+              ws.send(JSON.stringify({ type: 'authenticated', success: true }));
+            } else {
+              ws.send(JSON.stringify({ type: 'authenticated', success: false, error: 'Invalid token' }));
+              ws.close();
+            }
+            break;
+          default:
+            // Reject any messages from unauthenticated connections
+            if (!ws.isAuthenticated) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Authentication required' }));
+              ws.close();
+            }
             break;
         }
       } catch (error) {
         console.error('WebSocket message error:', error);
+        ws.close();
       }
     });
 
     ws.on('close', () => {
       connections.delete(connectionId);
     });
+    
+    // Close unauthenticated connections after 10 seconds
+    setTimeout(() => {
+      if (!ws.isAuthenticated) {
+        ws.close();
+      }
+    }, 10000);
   });
 
-  // Broadcast to specific user types
+  // Broadcast to specific user types (only authenticated connections)
   function broadcast(message: any, filter?: (ws: ExtendedWebSocket) => boolean) {
     connections.forEach((ws) => {
-      if (ws.readyState === WebSocket.OPEN && (!filter || filter(ws))) {
+      if (ws.readyState === WebSocket.OPEN && ws.isAuthenticated && (!filter || filter(ws))) {
         ws.send(JSON.stringify(message));
       }
     });
@@ -58,15 +145,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Parent Routes
   app.post('/api/parent/session', async (req, res) => {
     try {
-      const { sessionId, parentName } = req.body;
+      // Validate input and prevent session fixation
+      const validatedData = parentSessionSchema.parse(req.body);
       
-      let session = await storage.getParentSession(sessionId);
-      if (!session) {
-        session = await storage.createParentSession({ sessionId, parentName });
-      }
+      // Server generates secure session ID - never trust client input
+      const secureSessionId = `device-${Date.now()}-${nanoid()}`;
       
-      res.json(session);
+      const session = await storage.createParentSession({
+        sessionId: secureSessionId,
+        parentName: validatedData.parentName
+      });
+      
+      // Generate WebSocket authentication token
+      const wsToken = generateWebSocketToken(secureSessionId, 'parent');
+      
+      res.json({ ...session, wsToken });
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: 'Invalid input', details: error.errors });
+      }
       res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
@@ -99,7 +196,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/parent/join-queue', async (req, res) => {
     try {
-      const { sessionId, teacherCode, childName } = req.body;
+      // Validate input with proper sanitization
+      const { sessionId } = req.body;
+      const validatedData = joinQueueSchema.parse({ teacherCode: req.body.teacherCode, childName: req.body.childName });
       
       
       const session = await storage.getParentSession(sessionId);
@@ -107,7 +206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Session not found' });
       }
 
-      const teacher = await storage.getTeacherByCode(teacherCode);
+      const teacher = await storage.getTeacherByCode(validatedData.teacherCode);
       if (!teacher) {
         return res.status(404).json({ error: 'Teacher not found' });
       }
@@ -129,10 +228,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         initialStatus = parentInMeeting ? 'skipped' : 'current';
       }
 
+      // Use transaction to prevent position collision race condition
       const queueEntry = await storage.createQueueEntry({
         teacherId: teacher.id,
         parentSessionId: session.id,
-        childName,
+        childName: validatedData.childName,
         status: initialStatus
       });
 
