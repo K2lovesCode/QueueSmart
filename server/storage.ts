@@ -262,11 +262,12 @@ export class DatabaseStorage implements IStorage {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error('Unknown error');
         
-        // Check if this is a unique constraint violation
-        if (error instanceof Error && error.message.includes('unique') && attempt < maxRetries) {
-          // Add exponential backoff delay before retry
-          const delay = Math.pow(2, attempt - 1) * 100; // 100ms, 200ms, 400ms
-          await new Promise(resolve => setTimeout(resolve, delay));
+        // Check if this is a unique constraint violation (Postgres error code 23505)
+        if (error instanceof Error && (error.message.includes('unique') || error.message.includes('23505')) && attempt < maxRetries) {
+          // Add exponential backoff delay with jitter before retry
+          const baseDelay = Math.pow(2, attempt - 1) * 100; // 100ms, 200ms, 400ms
+          const jitter = Math.random() * 50; // Add 0-50ms random jitter
+          await new Promise(resolve => setTimeout(resolve, baseDelay + jitter));
           continue;
         }
         
@@ -342,20 +343,33 @@ export class DatabaseStorage implements IStorage {
         // Only process one skipped entry at a time (parent can only be in one meeting)
         break;
       } else {
-        // Teacher is busy, move this parent to first position in waiting queue
-        await this.updateQueueEntry(skippedEntry.id, {
-          status: 'waiting',
-          position: 0 // Give them priority position
+        // Teacher is busy, move this parent to first position in waiting queue atomically
+        await db.transaction(async (tx) => {
+          // Get all active entries (waiting, next, current) with row lock to prevent conflicts
+          const activeEntries = await tx.select()
+            .from(queueEntries)
+            .where(and(
+              eq(queueEntries.teacherId, skippedEntry.teacherId),
+              sql`${queueEntries.status} IN ('waiting', 'next', 'current')`
+            ))
+            .orderBy(desc(queueEntries.position))
+            .for('update');
+          
+          // First, shift all existing entries up by 1 position (in descending order to avoid conflicts)
+          for (const entry of activeEntries) {
+            await tx.update(queueEntries)
+              .set({ position: entry.position + 1 })
+              .where(eq(queueEntries.id, entry.id));
+          }
+          
+          // Now set the skipped entry to position 1 (no conflict since we made room)
+          await tx.update(queueEntries)
+            .set({
+              status: 'waiting',
+              position: 1
+            })
+            .where(eq(queueEntries.id, skippedEntry.id));
         });
-        
-        // Shift other waiting entries down
-        await db.update(queueEntries)
-          .set({ position: sql`${queueEntries.position} + 1` })
-          .where(and(
-            eq(queueEntries.teacherId, skippedEntry.teacherId),
-            eq(queueEntries.status, 'waiting'),
-            sql`${queueEntries.id} != ${skippedEntry.id}`
-          ));
       }
     }
   }

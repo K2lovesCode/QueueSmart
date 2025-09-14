@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, uuid, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, uuid, boolean, integer, unique, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -43,7 +43,14 @@ export const queueEntries = pgTable("queue_entries", {
   notifiedAt: timestamp("notified_at"),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
-});
+}, (table) => ({
+  // Prevent duplicate parent+teacher combinations for ACTIVE statuses only (allow multiple completed/skipped)
+  uniqueActiveParentTeacher: uniqueIndex("ux_no_duplicate_active_parent_teacher").on(table.parentSessionId, table.teacherId).where(sql`status IN ('waiting', 'next', 'current')`),
+  // Ensure unique positions per teacher for active queue entries
+  uniquePositionPerTeacher: uniqueIndex("ux_teacher_position_active").on(table.teacherId, table.position).where(sql`status IN ('waiting', 'next', 'current')`),
+  // Ensure only one current status per teacher  
+  oneCurrentPerTeacher: uniqueIndex("ux_one_current_per_teacher").on(table.teacherId).where(sql`status = 'current'`),
+}));
 
 export const meetings = pgTable("meetings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -54,7 +61,10 @@ export const meetings = pgTable("meetings", {
   duration: integer("duration"), // in seconds
   wasExtended: boolean("was_extended").default(false),
   extendedBy: integer("extended_by").default(0), // in seconds
-});
+}, (table) => ({
+  // Ensure only one active meeting per teacher
+  oneActiveMeetingPerTeacher: uniqueIndex("ux_one_active_meeting_per_teacher").on(table.teacherId).where(sql`ended_at IS NULL`),
+}));
 
 // Relations
 export const usersRelations = relations(users, ({ one }) => ({
