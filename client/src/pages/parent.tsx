@@ -58,9 +58,9 @@ export default function ParentInterface() {
     enabled: !!parentSession && !!sessionId
   });
 
-  // Filter to only show active queues (not completed or skipped)
+  // Filter to show active queues (not completed)
   const parentQueues = Array.isArray(allQueues) ? allQueues.filter((queue: any) =>
-    queue.status === 'waiting' || queue.status === 'next' || queue.status === 'current'
+    queue.status === 'waiting' || queue.status === 'next' || queue.status === 'current' || queue.status === 'skipped'
   ) : [];
 
   // WebSocket for real-time updates
@@ -419,7 +419,7 @@ export default function ParentInterface() {
           {parentQueues.map((queue: any) => (
             <QueueCard
               key={queue.id}
-              status={queue.status === 'waiting' ? 'waiting' : queue.status === 'next' ? 'next' : 'current'}
+              status={queue.status as 'waiting' | 'next' | 'current' | 'skipped'}
               teacherName={queue.teacher?.name || 'Teacher'}
               subject={queue.teacher?.subject || ''}
               childName={queue.childName}

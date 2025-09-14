@@ -109,6 +109,10 @@
   background: linear-gradient(135deg, #10B981 0%, #34D399 100%);
 }
 
+.queue-status-blue {
+  background: linear-gradient(135deg, #3B82F6 0%, #60A5FA 100%);
+}
+
 .timer-display {
   font-family: 'Courier New', monospace;
   font-weight: bold;

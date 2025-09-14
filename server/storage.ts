@@ -188,7 +188,7 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(teachers, eq(queueEntries.teacherId, teachers.id))
       .where(and(
         eq(queueEntries.parentSessionId, parentSessionId),
-        sql`${queueEntries.status} IN ('waiting', 'next', 'current')`
+        sql`${queueEntries.status} IN ('waiting', 'next', 'current', 'skipped')`
       ))
       .orderBy(asc(queueEntries.position));
   }
@@ -232,12 +232,49 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createQueueEntry(insertEntry: InsertQueueEntry): Promise<QueueEntry> {
-    const position = await this.getNextQueuePosition(insertEntry.teacherId);
-    const [entry] = await db.insert(queueEntries).values({
-      ...insertEntry,
-      position,
-    }).returning();
-    return entry;
+    const maxRetries = 3;
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await db.transaction(async (tx) => {
+          // Get next position with row lock to prevent concurrent position conflicts
+          const positions = await tx.select({ position: queueEntries.position })
+            .from(queueEntries)
+            .where(and(
+              eq(queueEntries.teacherId, insertEntry.teacherId),
+              sql`${queueEntries.status} IN ('waiting', 'next', 'current')`
+            ))
+            .orderBy(desc(queueEntries.position))
+            .limit(1)
+            .for('update');
+          
+          const nextPosition = positions.length > 0 ? positions[0].position + 1 : 1;
+          
+          // Insert with calculated position atomically
+          const [entry] = await tx.insert(queueEntries).values({
+            ...insertEntry,
+            position: nextPosition,
+          }).returning();
+          
+          return entry;
+        });
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Unknown error');
+        
+        // Check if this is a unique constraint violation
+        if (error instanceof Error && error.message.includes('unique') && attempt < maxRetries) {
+          // Add exponential backoff delay before retry
+          const delay = Math.pow(2, attempt - 1) * 100; // 100ms, 200ms, 400ms
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        throw error;
+      }
+    }
+    
+    throw lastError || new Error('Failed to create queue entry after retries');
   }
 
   async updateQueueEntry(id: string, updates: Partial<QueueEntry>): Promise<QueueEntry | undefined> {
@@ -249,6 +286,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNextQueuePosition(teacherId: string): Promise<number> {
+    // This method is now deprecated - position calculation is done atomically in createQueueEntry
+    // Keeping for compatibility but recommend using createQueueEntry directly
     const entries = await db.select()
       .from(queueEntries)
       .where(and(
@@ -357,128 +396,198 @@ export class DatabaseStorage implements IStorage {
 
   // Atomic operation to create meeting only if teacher is free
   async createMeetingIfTeacherFree(insertMeeting: InsertMeeting): Promise<{ success: boolean; meeting?: Meeting; error?: string }> {
-    try {
-      // Double-check that teacher is still free before creating meeting
-      const currentMeeting = await this.getCurrentMeeting(insertMeeting.teacherId);
-      
-      if (currentMeeting) {
+    return await db.transaction(async (tx) => {
+      try {
+        // Double-check that teacher is still free before creating meeting
+        const [currentMeeting] = await tx.select()
+          .from(meetings)
+          .where(and(
+            eq(meetings.teacherId, insertMeeting.teacherId),
+            sql`${meetings.endedAt} IS NULL`
+          ))
+          .limit(1);
+        
+        if (currentMeeting) {
+          return { 
+            success: false, 
+            error: 'Teacher is no longer available' 
+          };
+        }
+
+        // Also verify parent is not in another meeting
+        const [queueEntry] = await tx.select()
+          .from(queueEntries)
+          .where(eq(queueEntries.id, insertMeeting.queueEntryId))
+          .limit(1);
+          
+        if (!queueEntry) {
+          return { 
+            success: false, 
+            error: 'Queue entry not found' 
+          };
+        }
+
+        // Check if parent is already in an active meeting
+        const [parentInMeeting] = await tx.select()
+          .from(meetings)
+          .innerJoin(queueEntries, eq(meetings.queueEntryId, queueEntries.id))
+          .where(and(
+            eq(queueEntries.parentSessionId, queueEntry.parentSessionId),
+            sql`${meetings.endedAt} IS NULL`
+          ))
+          .limit(1);
+
+        if (parentInMeeting) {
+          return { 
+            success: false, 
+            error: 'Parent is already in another meeting' 
+          };
+        }
+
+        // Create meeting atomically within transaction
+        const [meeting] = await tx.insert(meetings).values(insertMeeting).returning();
+        
+        return { 
+          success: true, 
+          meeting 
+        };
+      } catch (error) {
         return { 
           success: false, 
-          error: 'Teacher is no longer available' 
+          error: error instanceof Error ? error.message : 'Unknown error' 
         };
       }
-
-      // Also verify parent is not in another meeting
-      const queueEntry = await this.getQueueEntry(insertMeeting.queueEntryId);
-      if (!queueEntry) {
-        return { 
-          success: false, 
-          error: 'Queue entry not found' 
-        };
-      }
-
-      const parentInMeeting = await this.isParentInActiveMeeting(queueEntry.parentSessionId);
-      if (parentInMeeting) {
-        return { 
-          success: false, 
-          error: 'Parent is already in another meeting' 
-        };
-      }
-
-      // Create meeting atomically
-      const meeting = await this.createMeeting(insertMeeting);
-      
-      return { 
-        success: true, 
-        meeting 
-      };
-    } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
-      };
-    }
+    });
   }
 
   // Advanced queue management - find next available parent and start meeting
   async advanceQueueForTeacher(teacherId: string, broadcastFn: Function): Promise<{ meeting?: Meeting; nextEntry?: any; skippedEntries?: any[] }> {
-    const queue = await this.getQueueEntriesForTeacher(teacherId);
-    const skippedEntries: any[] = [];
-    let meeting: Meeting | undefined;
-    let nextEntry: any;
+    return await db.transaction(async (tx) => {
+      // Get queue entries within transaction for consistency
+      const queue = await tx.select({
+        id: queueEntries.id,
+        teacherId: queueEntries.teacherId,
+        parentSessionId: queueEntries.parentSessionId,
+        childName: queueEntries.childName,
+        status: queueEntries.status,
+        position: queueEntries.position,
+        joinedAt: queueEntries.joinedAt,
+        teacher: {
+          id: teachers.id,
+          name: teachers.name,
+          subject: teachers.subject,
+        }
+      })
+        .from(queueEntries)
+        .leftJoin(teachers, eq(queueEntries.teacherId, teachers.id))
+        .where(and(
+          eq(queueEntries.teacherId, teacherId),
+          sql`${queueEntries.status} IN ('waiting', 'next')`
+        ))
+        .orderBy(asc(queueEntries.position));
 
-    // Try each person in queue until we find someone available
-    for (const entry of queue) {
-      const parentInMeeting = await this.isParentInActiveMeeting(entry.parentSessionId);
-      
-      if (parentInMeeting) {
-        // Parent is busy, mark as skipped
-        await this.updateQueueEntry(entry.id, {
-          status: 'skipped'
-        });
-        
-        skippedEntries.push(entry);
-        
-        // Notify parent their turn was skipped
-        broadcastFn({
-          type: 'status_update',
-          queueEntryId: entry.id,
-          status: 'skipped',
-          message: 'Your turn was skipped because you are currently in another meeting. You will have priority when your current meeting ends.'
-        }, (ws: any) => ws.userType === 'parent' && ws.parentSessionId === entry.parentSessionId);
-      } else {
-        // Parent is available, start meeting
-        const result = await this.createMeetingIfTeacherFree({
-          teacherId,
-          queueEntryId: entry.id
-        });
-        
-        if (result.success && result.meeting) {
-          await this.updateQueueEntry(entry.id, {
-            status: 'current',
-            startedAt: new Date()
-          });
+      const skippedEntries: any[] = [];
+      let meeting: Meeting | undefined;
+      let nextEntry: any;
 
-          meeting = result.meeting;
-          nextEntry = entry;
+      // Try each person in queue until we find someone available
+      for (const entry of queue) {
+        // Check if parent is already in an active meeting (within transaction)
+        const [parentInMeeting] = await tx.select()
+          .from(meetings)
+          .innerJoin(queueEntries, eq(meetings.queueEntryId, queueEntries.id))
+          .where(and(
+            eq(queueEntries.parentSessionId, entry.parentSessionId),
+            sql`${meetings.endedAt} IS NULL`
+          ))
+          .limit(1);
+        
+        if (parentInMeeting) {
+          // Parent is busy, mark as skipped
+          await tx.update(queueEntries)
+            .set({ status: 'skipped' })
+            .where(eq(queueEntries.id, entry.id));
           
-          // Notify parent their turn is now
+          skippedEntries.push(entry);
+          
+          // Notify parent their turn was skipped
           broadcastFn({
             type: 'status_update',
             queueEntryId: entry.id,
-            status: 'current',
-            message: 'YOUR TURN NOW!'
+            status: 'skipped',
+            message: 'Your turn was skipped because you are currently in another meeting. You will have priority when your current meeting ends.'
           }, (ws: any) => ws.userType === 'parent' && ws.parentSessionId === entry.parentSessionId);
-          
-          break; // Found someone, stop looking
+        } else {
+          // Parent is available, try to start meeting
+          try {
+            // Create meeting atomically
+            const [newMeeting] = await tx.insert(meetings).values({
+              teacherId,
+              queueEntryId: entry.id
+            }).returning();
+
+            // Update queue entry status
+            await tx.update(queueEntries)
+              .set({ 
+                status: 'current',
+                startedAt: new Date()
+              })
+              .where(eq(queueEntries.id, entry.id));
+
+            meeting = newMeeting;
+            nextEntry = entry;
+            
+            // Notify parent their turn is now
+            broadcastFn({
+              type: 'status_update',
+              queueEntryId: entry.id,
+              status: 'current',
+              message: 'YOUR TURN NOW!'
+            }, (ws: any) => ws.userType === 'parent' && ws.parentSessionId === entry.parentSessionId);
+            
+            break; // Found someone, stop looking
+          } catch (error) {
+            // Meeting creation failed (likely due to unique constraint), skip this entry
+            continue;
+          }
         }
       }
-    }
 
-    // Update the next available person in queue to "next"
-    if (meeting) {
-      const updatedQueue = await this.getQueueEntriesForTeacher(teacherId);
-      const waitingEntries = updatedQueue.filter(entry => entry.status === 'waiting');
-      if (waitingEntries.length > 0) {
-        await this.updateQueueEntry(waitingEntries[0].id, {
-          status: 'next',
-          notifiedAt: new Date()
-        });
+      // Update the next available person in queue to "next"
+      if (meeting) {
+        const waitingEntries = await tx.select()
+          .from(queueEntries)
+          .where(and(
+            eq(queueEntries.teacherId, teacherId),
+            eq(queueEntries.status, 'waiting')
+          ))
+          .orderBy(asc(queueEntries.position))
+          .limit(1);
 
-        broadcastFn({
-          type: 'status_update',
-          queueEntryId: waitingEntries[0].id,
-          status: 'next',
-          message: 'GETTING CLOSE'
-        }, (ws: any) => ws.userType === 'parent' && ws.parentSessionId === waitingEntries[0].parentSessionId);
+        if (waitingEntries.length > 0) {
+          const nextQueueEntry = waitingEntries[0];
+          await tx.update(queueEntries)
+            .set({ 
+              status: 'next',
+              notifiedAt: new Date()
+            })
+            .where(eq(queueEntries.id, nextQueueEntry.id));
+
+          broadcastFn({
+            type: 'status_update',
+            queueEntryId: nextQueueEntry.id,
+            status: 'next',
+            message: 'GETTING CLOSE'
+          }, (ws: any) => ws.userType === 'parent' && ws.parentSessionId === nextQueueEntry.parentSessionId);
+        }
       }
-    }
 
-    return {
-      meeting,
-      nextEntry,
-      skippedEntries
-    };
+      return {
+        meeting,
+        nextEntry,
+        skippedEntries
+      };
+    });
   }
 
   async endMeeting(meetingId: string): Promise<Meeting | undefined> {

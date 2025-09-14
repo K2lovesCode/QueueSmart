@@ -2,7 +2,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 interface QueueCardProps {
-  status: 'waiting' | 'next' | 'current';
+  status: 'waiting' | 'next' | 'current' | 'skipped';
   teacherName: string;
   subject: string;
   childName: string;
@@ -27,6 +27,12 @@ const statusConfig = {
     title: 'YOUR TURN NOW!',
     message: 'The teacher is ready for you now. Please enter the classroom.',
     pulseClass: 'notification-badge'
+  },
+  skipped: {
+    bgClass: 'queue-status-blue',
+    title: 'TURN SKIPPED',
+    message: 'Your turn was skipped because you were in another meeting. You have priority when your current meeting ends.',
+    pulseClass: ''
   }
 };
 
