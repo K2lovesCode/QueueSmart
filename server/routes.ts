@@ -334,58 +334,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const teacherId = req.params.teacherId;
       
-      // Check if there's an active meeting and end it first
-      const currentMeeting = await storage.getCurrentMeeting(teacherId);
-      if (currentMeeting) {
-        await storage.endMeeting(currentMeeting.id);
-      }
+      // Use atomic transaction-wrapped skip operation
+      const result = await storage.skipNoShowParent(teacherId, broadcast);
       
-      const queue = await storage.getQueueEntriesForTeacher(teacherId);
-      
-      if (queue.length > 0) {
-        const skippedEntry = queue[0];
-        
-        // Mark as skipped
-        await storage.updateQueueEntry(skippedEntry.id, {
-          status: 'skipped',
-          completedAt: new Date()
-        });
-
-        // Notify the skipped parent
-        broadcast({
-          type: 'queue_removed',
-          queueEntryId: skippedEntry.id,
-          message: 'You have been removed from the queue'
-        }, (ws) => ws.userType === 'parent' && ws.parentSessionId === skippedEntry.parentSessionId);
-
-        // CRITICAL FIX: Process parent's other skipped entries to reactivate them
-        await storage.processQueueAfterMeetingEnd(skippedEntry.parentSessionId, broadcast);
-
-        // Use improved queue advancement to find next available parent
-        const advanceResult = await storage.advanceQueueForTeacher(teacherId, broadcast);
-        
-        if (advanceResult.meeting) {
-          // Broadcast meeting started to teacher and admin
-          broadcast({
-            type: 'meeting_started',
-            teacherId,
-            meeting: advanceResult.meeting
-          }, (ws) => (ws.userType === 'teacher' && ws.teacherId === teacherId) || ws.userType === 'admin');
-        }
+      if (result.success) {
+        res.json({ success: true });
+      } else {
+        res.status(400).json({ error: result.error });
       }
-
-      // Broadcast meeting ended for UI consistency (matches end-meeting route)
-      broadcast({
-        type: 'meeting_ended',
-        teacherId
-      }, (ws) => (ws.userType === 'teacher' && ws.teacherId === teacherId) || ws.userType === 'admin');
-
-      broadcast({
-        type: 'queue_update',
-        teacherId
-      }, (ws) => (ws.userType === 'teacher' && ws.teacherId === teacherId) || ws.userType === 'admin');
-
-      res.json({ success: true });
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }

@@ -49,6 +49,7 @@ export interface IStorage {
   
   // Thread-safe operations
   advanceQueueForTeacher(teacherId: string, broadcastFn: Function): Promise<{ meeting?: Meeting; nextEntry?: any; skippedEntries?: any[] }>;
+  skipNoShowParent(teacherId: string, broadcastFn: Function): Promise<{ success: boolean; error?: string }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -625,6 +626,70 @@ export class DatabaseStorage implements IStorage {
       .where(eq(meetings.id, meetingId))
       .returning();
     return meeting || undefined;
+  }
+
+  async skipNoShowParent(teacherId: string, broadcastFn: Function): Promise<{ success: boolean; error?: string }> {
+    return await db.transaction(async (tx) => {
+      try {
+        // Check if there's an active meeting and end it first
+        const currentMeeting = await this.getCurrentMeeting(teacherId);
+        if (currentMeeting) {
+          await this.endMeeting(currentMeeting.id);
+        }
+        
+        const queue = await this.getQueueEntriesForTeacher(teacherId);
+        
+        if (queue.length > 0) {
+          const skippedEntry = queue[0];
+          
+          // Mark as skipped
+          await this.updateQueueEntry(skippedEntry.id, {
+            status: 'skipped',
+            completedAt: new Date()
+          });
+
+          // Notify the skipped parent
+          broadcastFn({
+            type: 'queue_removed',
+            queueEntryId: skippedEntry.id,
+            message: 'You have been removed from the queue'
+          }, (ws: any) => ws.userType === 'parent' && ws.parentSessionId === skippedEntry.parentSessionId);
+
+          // Process parent's other skipped entries to reactivate them
+          await this.processQueueAfterMeetingEnd(skippedEntry.parentSessionId, broadcastFn);
+
+          // Use improved queue advancement to find next available parent
+          const advanceResult = await this.advanceQueueForTeacher(teacherId, broadcastFn);
+          
+          if (advanceResult.meeting) {
+            // Broadcast meeting started to teacher and admin
+            broadcastFn({
+              type: 'meeting_started',
+              teacherId,
+              meeting: advanceResult.meeting
+            }, (ws: any) => (ws.userType === 'teacher' && ws.teacherId === teacherId) || ws.userType === 'admin');
+          }
+        }
+
+        // Broadcast meeting ended for UI consistency
+        broadcastFn({
+          type: 'meeting_ended',
+          teacherId
+        }, (ws: any) => (ws.userType === 'teacher' && ws.teacherId === teacherId) || ws.userType === 'admin');
+
+        broadcastFn({
+          type: 'queue_update',
+          teacherId
+        }, (ws: any) => (ws.userType === 'teacher' && ws.teacherId === teacherId) || ws.userType === 'admin');
+
+        return { success: true };
+      } catch (error) {
+        return { 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Unknown error'
+        };
+      }
+    });
   }
 
   private async generateUniqueCode(teacherName: string): Promise<string> {
