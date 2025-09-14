@@ -7,11 +7,12 @@ import QRCode from "qrcode";
 import { nanoid } from "nanoid";
 import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
-import { z } from "zod";
-import bcrypt from "bcryptjs";
+import { z } from "zod";\nimport bcrypt from "bcryptjs";
 
 interface ExtendedWebSocket extends WebSocket {
-  sessionId?: string;
+import { z } from "zod";
+import bcrypt from "bcryptjs";
+import bcrypt from "bcryptjs";
   userType?: 'parent' | 'teacher' | 'admin';
   teacherId?: string;
   parentSessionId?: string;
