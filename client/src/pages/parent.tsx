@@ -15,11 +15,18 @@ import { Smartphone, Plus, Camera, Hash } from 'lucide-react';
 
 export default function ParentInterface() {
   const [location] = useLocation();
-  const [sessionId] = useState(() => {
-    // Device-based session: persistent per device, unique across devices
+  // CRITICAL FIX: Use state for sessionId so we can update it with server-returned sessionId
+  const [sessionId, setSessionId] = useState(() => {
+    // First check for server session ID
+    const serverSessionId = localStorage.getItem('ptm_server_session');
+    if (serverSessionId) {
+      return serverSessionId;
+    }
+    
+    // Fallback to device session for initial creation
     let deviceSessionId = localStorage.getItem('ptm_device_session');
     if (!deviceSessionId) {
-      // Create a device-specific session ID
+      // Create a device-specific session ID for initial request
       deviceSessionId = `device-${Date.now()}-${crypto.randomUUID()}`;
       localStorage.setItem('ptm_device_session', deviceSessionId);
     }
@@ -116,9 +123,29 @@ export default function ParentInterface() {
       });
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // CRITICAL FIX: Update sessionId with server-returned sessionId
+      console.log('Session creation successful:', { 
+        serverReturned: data.sessionId, 
+        currentClientSessionId: sessionId,
+        fullResponse: data 
+      });
+      if (data.sessionId && data.sessionId !== sessionId) {
+        console.log('Updating client sessionId from', sessionId, 'to', data.sessionId);
+        setSessionId(data.sessionId);
+        localStorage.setItem('ptm_server_session', data.sessionId);
+        // Remove old device session since we now have server session
+        localStorage.removeItem('ptm_device_session');
+        console.log('Updated localStorage:', {
+          serverSession: localStorage.getItem('ptm_server_session'),
+          deviceSession: localStorage.getItem('ptm_device_session')
+        });
+      } else {
+        console.log('No sessionId update needed or sessionId missing from response');
+      }
       setCurrentStep('join');
-      queryClient.invalidateQueries({ queryKey: ['/api/parent/session', sessionId] });
+      // Invalidate with new sessionId
+      queryClient.invalidateQueries({ queryKey: ['/api/parent/session', data.sessionId || sessionId] });
     }
   });
 

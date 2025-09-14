@@ -102,7 +102,9 @@ const queueJoinLimiter = rateLimit({
   trustProxy: 1,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.body?.sessionId || req.ip,
+  keyGenerator: (req, res) => {
+    return req.body?.sessionId || rateLimit.ipKeyGenerator(req, res);
+  },
   skip: shouldBypass
 });
 
@@ -200,9 +202,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Validate input and prevent session fixation
       const validatedData = parentSessionSchema.parse(req.body);
+      console.log('Creating parent session with input:', {
+        clientSessionId: req.body.sessionId,
+        parentName: validatedData.parentName
+      });
       
       // Server generates secure session ID - never trust client input
       const secureSessionId = `device-${Date.now()}-${nanoid()}`;
+      console.log('Generated server sessionId:', secureSessionId);
       
       const session = await storage.createParentSession({
         sessionId: secureSessionId,
@@ -212,8 +219,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Generate WebSocket authentication token
       const wsToken = generateWebSocketToken(secureSessionId, 'parent');
       
-      res.json({ ...session, wsToken });
+      const response = { ...session, wsToken };
+      console.log('Returning session response:', response);
+      res.json(response);
     } catch (error) {
+      console.error('Error creating parent session:', error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: 'Invalid input', details: error.errors });
       }

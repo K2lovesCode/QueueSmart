@@ -110,7 +110,7 @@ class DatabaseStorage implements IStorage {
   }
 
   async getParentSession(sessionId: string): Promise<ParentSession | undefined> {
-    const [session] = await db.select().from(parentSessions).where(eq(parentSessions.id, sessionId));
+    const [session] = await db.select().from(parentSessions).where(eq(parentSessions.sessionId, sessionId));
     return session || undefined;
   }
 
@@ -207,17 +207,21 @@ class DatabaseStorage implements IStorage {
 
   async createQueueEntry(entry: InsertQueueEntry): Promise<QueueEntry> {
     return await db.transaction(async (trx) => {
-      // Get current max position for this teacher
-      const [maxPositionResult] = await trx.select({ 
-        maxPosition: sql<number>`COALESCE(MAX(position), 0)` 
-      }).from(queueEntries)
+      // Lock all existing queue entries for this teacher to prevent position conflicts
+      // We can't use FOR UPDATE with MAX(), so we lock the table first, then calculate max
+      const existingEntries = await trx.select({ position: queueEntries.position })
+        .from(queueEntries)
         .where(and(
           eq(queueEntries.teacherId, entry.teacherId),
           isNull(queueEntries.completedAt)
         ))
-        .for('update'); // CRITICAL: Lock to prevent race conditions
+        .for('update'); // CRITICAL: Lock existing entries to prevent race conditions
 
-      const nextPosition = (maxPositionResult?.maxPosition || 0) + 1;
+      // Calculate next position safely
+      const maxPosition = existingEntries.reduce((max, entry) => 
+        Math.max(max, entry.position || 0), 0
+      );
+      const nextPosition = maxPosition + 1;
 
       const [newEntry] = await trx.insert(queueEntries).values({
         ...entry,
