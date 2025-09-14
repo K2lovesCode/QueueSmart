@@ -126,7 +126,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let initialStatus = 'waiting';
       if (isFirstInQueue) {
         const parentInMeeting = await storage.isParentInActiveMeeting(session.id);
-        console.log(`[JOIN-QUEUE DEBUG] Teacher: ${teacher.name}, Parent: ${session.id}, IsFirstInQueue: ${isFirstInQueue}, ParentInMeeting: ${parentInMeeting}`);
         initialStatus = parentInMeeting ? 'skipped' : 'current';
       }
 
@@ -137,22 +136,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: initialStatus
       });
 
-      // If first person and parent is available, try to create meeting
+      // If first person and parent is available, try to create meeting atomically
       if (isFirstInQueue && initialStatus === 'current') {
         const meetingResult = await storage.createMeetingIfTeacherFree({
           teacherId: teacher.id,
           queueEntryId: queueEntry.id
         });
         
-        console.log(`[MEETING CREATION DEBUG] Teacher: ${teacher.name}, Success: ${meetingResult.success}, Meeting ID: ${meetingResult.meeting?.id}`);
-        
         if (meetingResult.success && meetingResult.meeting) {
           await storage.updateQueueEntry(queueEntry.id, {
             status: 'current',
             startedAt: new Date()
           });
-
-          console.log(`[MEETING STARTED] Teacher: ${teacher.name}, Parent: ${session.id}, Meeting: ${meetingResult.meeting.id}`);
 
           // Notify parent their turn is now
           broadcast({
@@ -161,12 +156,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: 'current',
             message: 'YOUR TURN NOW!'
           }, (ws) => ws.userType === 'parent' && ws.parentSessionId === session.id);
+
+          // Broadcast meeting started to teachers and admins
+          broadcast({
+            type: 'meeting_started',
+            teacherId: teacher.id,
+            meeting: meetingResult.meeting
+          }, (ws) => (ws.userType === 'teacher' && ws.teacherId === teacher.id) || ws.userType === 'admin');
         } else {
-          console.log(`[MEETING FAILED] Teacher: ${teacher.name}, Parent: ${session.id}, Marking as waiting`);
-          // Race condition occurred, mark as waiting instead
+          // Meeting creation failed, mark as waiting and notify parent
           await storage.updateQueueEntry(queueEntry.id, {
             status: 'waiting'
           });
+          
+          broadcast({
+            type: 'status_update',
+            queueEntryId: queueEntry.id,
+            status: 'waiting',
+            message: 'You are in the queue. We\'ll notify you when it\'s getting close.'
+          }, (ws) => ws.userType === 'parent' && ws.parentSessionId === session.id);
         }
       } else if (isFirstInQueue && initialStatus === 'skipped') {
         // Notify parent their turn was skipped
