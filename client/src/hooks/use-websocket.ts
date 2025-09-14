@@ -10,6 +10,7 @@ interface UseWebSocketOptions {
   userType: 'parent' | 'teacher' | 'admin';
   teacherId?: string;
   parentSessionId?: string;
+  wsToken?: string; // JWT token for authentication
 }
 
 export function useWebSocket(options: UseWebSocketOptions) {
@@ -27,15 +28,24 @@ export function useWebSocket(options: UseWebSocketOptions) {
       ws.current.onopen = () => {
         setIsConnected(true);
         
-        // Identify this connection
+        // CRITICAL SECURITY FIX: Use JWT authentication instead of identify
         if (ws.current?.readyState === WebSocket.OPEN) {
-          ws.current.send(JSON.stringify({
-            type: 'identify',
-            sessionId: options.sessionId,
-            userType: options.userType,
-            teacherId: options.teacherId,
-            parentSessionId: options.parentSessionId
-          }));
+          if (options.wsToken) {
+            // Authenticate with JWT token
+            ws.current.send(JSON.stringify({
+              type: 'authenticate',
+              token: options.wsToken
+            }));
+          } else {
+            // Fallback for parent sessions without explicit token
+            ws.current.send(JSON.stringify({
+              type: 'identify',
+              sessionId: options.sessionId,
+              userType: options.userType,
+              teacherId: options.teacherId,
+              parentSessionId: options.parentSessionId
+            }));
+          }
         }
       };
 
