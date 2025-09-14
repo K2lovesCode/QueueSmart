@@ -47,7 +47,7 @@ export default function ParentInterface() {
 
 
   // Check if parent session exists
-  const { data: parentSession } = useQuery({
+  const { data: parentSession } = useQuery<{id: string, sessionId: string, parentName: string} | null>({
     queryKey: ['/api/parent/session', sessionId],
     enabled: !!sessionId
   });
@@ -67,7 +67,7 @@ export default function ParentInterface() {
   const { lastMessage } = useWebSocket({
     sessionId,
     userType: 'parent',
-    parentSessionId: parentSession?.id || ''
+    parentSessionId: parentSession?.id || sessionId
   });
 
   // Handle WebSocket messages
