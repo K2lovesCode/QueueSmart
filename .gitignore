@@ -4,3 +4,26 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Backup and temporary files
+*.backup
+*.working
+*.corrupted*
+*.temp
+*.tmp
+
+# Development artifacts
+attached_assets/Pasted-*.txt
+attached_assets/Screenshot*.png
+
+# Database migration files (auto-generated)
+migrations/
+
+# Logs
+*.log
+npm-debug.log*
