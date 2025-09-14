@@ -6,11 +6,11 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, asc, sql, isNull } from "drizzle-orm";
-import { randomUUID } from "crypto";
-import bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";\nimport bcrypt from "bcryptjs";\nimport bcrypt from "bcryptjs";
 
 export interface IStorage {
   // Users
+import bcrypt from "bcryptjs";
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -63,10 +63,7 @@ class DatabaseStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    // CRITICAL SECURITY FIX: Hash password before storing
-    const hashedPassword = await bcrypt.hash(insertUser.password, 12);
-    const userWithHashedPassword = { ...insertUser, password: hashedPassword };
-    const [user] = await db.insert(users).values(userWithHashedPassword).returning();
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
@@ -215,7 +212,7 @@ class DatabaseStorage implements IStorage {
           eq(queueEntries.teacherId, entry.teacherId),
           isNull(queueEntries.completedAt)
         ))
-        .for('update'); // CRITICAL: Lock to prevent race conditions
+        .for('update'); // Lock to prevent race conditions
 
       const nextPosition = (maxPositionResult?.maxPosition || 0) + 1;
 
@@ -225,7 +222,7 @@ class DatabaseStorage implements IStorage {
       }).returning();
 
       return newEntry;
-    }, { isolationLevel: 'serializable' }); // CRITICAL: SERIALIZABLE isolation prevents race conditions
+    }, { isolationLevel: 'serializable' });
   }
 
   async updateQueueEntry(id: string, updates: Partial<QueueEntry>): Promise<QueueEntry | undefined> {
@@ -248,7 +245,7 @@ class DatabaseStorage implements IStorage {
   async createMeetingIfTeacherFree(params: { teacherId: string; queueEntryId: string }): Promise<{ success: boolean; meeting?: Meeting }> {
     try {
       const meeting = await db.transaction(async (trx) => {
-        // CRITICAL: Check if teacher is free with row lock
+        // Check if teacher is free
         const [existingMeeting] = await trx.select().from(meetings)
           .where(and(
             eq(meetings.teacherId, params.teacherId),
@@ -260,7 +257,7 @@ class DatabaseStorage implements IStorage {
           throw new Error('Teacher is busy');
         }
 
-        // Get queue entry details with lock
+        // Get queue entry details
         const [queueEntry] = await trx.select().from(queueEntries)
           .where(eq(queueEntries.id, params.queueEntryId))
           .for('update');
@@ -269,7 +266,7 @@ class DatabaseStorage implements IStorage {
           throw new Error('Queue entry not found');
         }
 
-        // Create meeting atomically
+        // Create meeting
         const [newMeeting] = await trx.insert(meetings).values({
           teacherId: params.teacherId,
           parentSessionId: queueEntry.parentSessionId,
@@ -278,7 +275,7 @@ class DatabaseStorage implements IStorage {
         }).returning();
 
         return newMeeting;
-      }, { isolationLevel: 'serializable' }); // CRITICAL: SERIALIZABLE isolation
+      }, { isolationLevel: 'serializable' });
 
       return { success: true, meeting };
     } catch (error) {

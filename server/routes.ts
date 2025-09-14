@@ -47,17 +47,63 @@ const adminLoginSchema = z.object({
   password: z.string().min(1)
 });
 
-// Rate limiting middleware
+// Environment-aware rate limiting configuration
+const RATE_LIMIT_MODE = process.env.RATE_LIMIT_MODE || 'production'; // production | relaxed | disabled
+const RL_BYPASS_TOKEN = process.env.RL_BYPASS_TOKEN;
+const isProd = RATE_LIMIT_MODE === 'production';
+
+// Rate limit bypass function for development and testing
+const shouldBypass = (req: any) => {
+  if (RATE_LIMIT_MODE === 'disabled') return true;
+  if (!isProd) return true;
+  if (RL_BYPASS_TOKEN && req.headers['x-rl-bypass'] === RL_BYPASS_TOKEN) return true;
+  return false;
+};
+
+// General API rate limiter (per-IP)
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: { error: 'Too many requests from this IP, please try again later.' }
+  windowMs: 60 * 1000, // 1 minute
+  max: isProd ? 300 : 1000, // production: 300/min, relaxed: 1000/min
+  message: { error: 'Too many requests from this IP, please try again later.' },
+  trustProxy: 1,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: shouldBypass
 });
 
-const authLimiter = rateLimit({
+// Auth rate limiter (per-IP)
+const authIpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 auth requests per windowMs
-  message: { error: 'Too many authentication attempts, please try again later.' }
+  max: isProd ? 20 : 100, // production: 20/15m, relaxed: 100/15m
+  message: { error: 'Too many authentication attempts from this IP, please try again later.' },
+  trustProxy: 1,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: shouldBypass
+});
+
+// Auth rate limiter (per-account)
+const authAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per account per 15 minutes
+  message: { error: 'Too many login attempts for this account, please try again later.' },
+  trustProxy: 1,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.body?.email?.toLowerCase()?.trim() || 'unknown',
+  skip: shouldBypass
+});
+
+// Queue join rate limiter (per-session)
+const queueJoinLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: isProd ? 30 : 120, // production: 30/min, relaxed: 120/min
+  message: { error: 'Too many queue join attempts, please try again later.' },
+  trustProxy: 1,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.body?.sessionId || req.ip,
+  skip: shouldBypass
 });
 
 // JWT token generation for WebSocket authentication
@@ -82,8 +128,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   
-  // Apply general rate limiting to all routes
-  app.use(generalLimiter);
+  // Apply general rate limiting to all API routes
+  app.use('/api', generalLimiter);
 
   // WebSocket connections management
   const connections = new Map<string, ExtendedWebSocket>();
@@ -201,7 +247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/parent/join-queue', async (req, res) => {
+  app.post('/api/parent/join-queue', queueJoinLimiter, async (req, res) => {
     try {
       // Validate input with proper sanitization
       const { sessionId } = req.body;
@@ -314,7 +360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Teacher Routes
-  app.post('/api/teacher/login', authLimiter, async (req, res) => {
+  app.post('/api/teacher/login', authIpLimiter, authAccountLimiter, async (req, res) => {
     try {
       // Validate input data with proper sanitization
       const validatedData = teacherLoginSchema.parse(req.body);
@@ -473,7 +519,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin Routes
-  app.post('/api/admin/login', authLimiter, async (req, res) => {
+  app.post('/api/admin/login', authIpLimiter, authAccountLimiter, async (req, res) => {
     try {
       // Validate admin login input
       const validatedData = adminLoginSchema.parse(req.body);

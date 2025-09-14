@@ -4,9 +4,9 @@ import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
 
-// CRITICAL FIX: Enable trust proxy for rate limiting to work properly
-// This is required for X-Forwarded-For headers in Replit environment
-app.set('trust proxy', true);
+// CRITICAL FIX: Set trust proxy to 1 (not true) to prevent X-Forwarded-For spoofing
+// and resolve ValidationError from express-rate-limit
+app.set('trust proxy', 1);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
