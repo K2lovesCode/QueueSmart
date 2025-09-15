@@ -1,0 +1,758 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PTM Queue Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                borderRadius: {
+                    lg: "var(--radius)",
+                    md: "calc(var(--radius) - 2px)",
+                    sm: "calc(var(--radius) - 4px)",
+                },
+                colors: {
+                    background: "var(--background)",
+                    foreground: "var(--foreground)",
+                    card: {
+                        DEFAULT: "var(--card)",
+                        foreground: "var(--card-foreground)",
+                    },
+                    popover: {
+                        DEFAULT: "var(--popover)",
+                        foreground: "var(--popover-foreground)",
+                    },
+                    primary: {
+                        DEFAULT: "var(--primary)",
+                        foreground: "var(--primary-foreground)",
+                    },
+                    secondary: {
+                        DEFAULT: "var(--secondary)",
+                        foreground: "var(--secondary-foreground)",
+                    },
+                    muted: {
+                        DEFAULT: "var(--muted)",
+                        foreground: "var(--muted-foreground)",
+                    },
+                    accent: {
+                        DEFAULT: "var(--accent)",
+                        foreground: "var(--accent-foreground)",
+                    },
+                    destructive: {
+                        DEFAULT: "var(--destructive)",
+                        foreground: "var(--destructive-foreground)",
+                    },
+                    border: "var(--border)",
+                    input: "var(--input)",
+                    ring: "var(--ring)",
+                },
+                fontFamily: {
+                    sans: ["var(--font-sans)"],
+                }
+            },
+        }
+    };
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --background: hsl(210 40% 98%);
+            --foreground: hsl(222.2 84% 4.9%);
+            --card: hsl(0 0% 100%);
+            --card-foreground: hsl(222.2 84% 4.9%);
+            --popover: hsl(0 0% 100%);
+            --popover-foreground: hsl(222.2 84% 4.9%);
+            --primary: hsl(221.2 83.2% 53.3%);
+            --primary-foreground: hsl(210 40% 98%);
+            --secondary: hsl(210 40% 96%);
+            --secondary-foreground: hsl(222.2 84% 4.9%);
+            --muted: hsl(210 40% 96%);
+            --muted-foreground: hsl(215.4 16.3% 46.9%);
+            --accent: hsl(210 40% 96%);
+            --accent-foreground: hsl(222.2 84% 4.9%);
+            --destructive: hsl(0 84.2% 60.2%);
+            --destructive-foreground: hsl(210 40% 98%);
+            --border: hsl(214.3 31.8% 91.4%);
+            --input: hsl(214.3 31.8% 91.4%);
+            --ring: hsl(221.2 83.2% 53.3%);
+            --radius: 0.5rem;
+            --font-sans: 'Roboto', sans-serif;
+        }
+        
+        body {
+            font-family: var(--font-sans);
+        }
+        
+        .queue-status-gray {
+            background: linear-gradient(135deg, #6B7280 0%, #9CA3AF 100%);
+        }
+        
+        .queue-status-yellow {
+            background: linear-gradient(135deg, #F59E0B 0%, #FCD34D 100%);
+        }
+        
+        .queue-status-green {
+            background: linear-gradient(135deg, #10B981 0%, #34D399 100%);
+        }
+        
+        .timer-display {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+        
+        .interface-container {
+            display: none;
+        }
+        
+        .interface-container.active {
+            display: block;
+        }
+        
+        .qr-code-placeholder {
+            background: repeating-linear-gradient(
+                45deg,
+                #000,
+                #000 2px,
+                #fff 2px,
+                #fff 4px
+            );
+        }
+
+        .notification-badge {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+    </style>
+</head>
+<body class="bg-background text-foreground min-h-screen">
+    <!-- Navigation Header -->
+    <nav class="bg-card border-b border-border px-4 py-3 shadow-sm">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <i class="fas fa-users-class text-primary text-2xl"></i>
+                <h1 class="text-xl font-semibold text-foreground">PTM Queue Manager</h1>
+            </div>
+            <div class="flex space-x-2">
+                <button onclick="showInterface('parent')" class="px-4 py-2 text-sm font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-accent transition-colors">
+                    Parent View
+                </button>
+                <button onclick="showInterface('teacher')" class="px-4 py-2 text-sm font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-accent transition-colors">
+                    Teacher View
+                </button>
+                <button onclick="showInterface('admin')" class="px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                    Admin View
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- @COMPONENT: ParentInterface -->
+    <div id="parent-interface" class="interface-container active">
+        <div class="max-w-md mx-auto p-4 space-y-6">
+            <!-- Welcome Screen (First Time) -->
+            <div id="parent-welcome" class="bg-card rounded-lg shadow-lg p-6 text-center">
+                <div class="mb-6">
+                    <i class="fas fa-mobile-alt text-primary text-4xl mb-3"></i>
+                    <h2 class="text-2xl font-semibold text-foreground mb-2">Welcome to PTM</h2>
+                    <p class="text-muted-foreground">Let's get you set up for today's parent-teacher meetings</p>
+                </div>
+                <form class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Your Name</label>
+                        <input type="text" class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Enter your name" data-mock="true">
+                    </div>
+                    <button type="button" onclick="showParentJoinQueue()" class="w-full bg-primary text-primary-foreground py-3 rounded-md font-medium hover:bg-primary/90 transition-colors">
+                        Get Started
+                    </button>
+                </form>
+            </div>
+
+            <!-- Join Queue Options -->
+            <div id="parent-join" class="bg-card rounded-lg shadow-lg p-6 hidden">
+                <div class="text-center mb-6">
+                    <h2 class="text-xl font-semibold text-foreground mb-2">Join a Teacher's Queue</h2>
+                    <p class="text-muted-foreground">Scan the QR code or enter the teacher's unique code</p>
+                </div>
+                
+                <!-- QR Scanner -->
+                <div class="bg-muted rounded-lg p-6 text-center mb-4">
+                    <i class="fas fa-qrcode text-4xl text-muted-foreground mb-3"></i>
+                    <p class="text-sm text-muted-foreground mb-3">Point your camera at the QR code</p>
+                    <button class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors">
+                        <i class="fas fa-camera mr-2"></i>Scan QR Code
+                    </button>
+                </div>
+
+                <!-- Manual Code Entry -->
+                <div class="border-t border-border pt-4">
+                    <p class="text-center text-muted-foreground mb-3">or enter the code manually</p>
+                    <form class="space-y-3">
+                        <input type="text" class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-center uppercase" placeholder="e.g. JONES7" data-mock="true">
+                        <button type="button" onclick="showChildInfo()" class="w-full bg-secondary text-secondary-foreground py-2 rounded-md font-medium hover:bg-accent transition-colors">
+                            Join Queue
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Child Information Form -->
+            <div id="child-info" class="bg-card rounded-lg shadow-lg p-6 hidden">
+                <h2 class="text-xl font-semibold text-foreground mb-4">Child Information</h2>
+                <p class="text-muted-foreground mb-6">Please provide your child's details for <span class="font-medium text-foreground" data-bind="teacher.name">Mrs. Johnson</span></p>
+                
+                <form class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Child's Name</label>
+                        <input type="text" class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Enter child's name" data-mock="true">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Grade</label>
+                        <select class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" data-mock="true">
+                            <option>Select grade</option>
+                            <option>Kindergarten</option>
+                            <option>Grade 1</option>
+                            <option>Grade 2</option>
+                            <option>Grade 3</option>
+                            <option>Grade 4</option>
+                            <option>Grade 5</option>
+                        </select>
+                    </div>
+                    <button type="button" onclick="showParentDashboard()" class="w-full bg-primary text-primary-foreground py-3 rounded-md font-medium hover:bg-primary/90 transition-colors">
+                        Join Queue
+                    </button>
+                </form>
+            </div>
+
+            <!-- Parent Dashboard -->
+            <div id="parent-dashboard" class="space-y-4 hidden">
+                <div class="text-center mb-6">
+                    <h2 class="text-xl font-semibold text-foreground">Your Queues</h2>
+                    <p class="text-muted-foreground">We'll notify you when it's time</p>
+                </div>
+
+                <!-- Queue Cards -->
+                <!-- @MAP: userQueues.map(queue => ( -->
+                <div class="bg-card rounded-lg shadow-lg overflow-hidden">
+                    <div class="queue-status-gray text-white p-4 text-center">
+                        <div class="text-lg font-semibold">IN QUEUE</div>
+                        <div class="text-sm opacity-90">You're all set. We'll notify you when it's getting close.</div>
+                    </div>
+                    <div class="p-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="font-medium text-foreground" data-bind="queue.teacherName">Mrs. Johnson</span>
+                            <span class="text-sm text-muted-foreground" data-bind="queue.subject">Mathematics</span>
+                        </div>
+                        <div class="text-sm text-muted-foreground">
+                            Student: <span data-bind="queue.childName">Emma Smith</span> • Grade <span data-bind="queue.grade">3</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-card rounded-lg shadow-lg overflow-hidden">
+                    <div class="queue-status-yellow text-white p-4 text-center notification-badge">
+                        <div class="text-lg font-semibold">GETTING CLOSE</div>
+                        <div class="text-sm opacity-90">You are next in line. Please start making your way to the classroom.</div>
+                    </div>
+                    <div class="p-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="font-medium text-foreground" data-bind="queue.teacherName">Mr. Davis</span>
+                            <span class="text-sm text-muted-foreground" data-bind="queue.subject">Science</span>
+                        </div>
+                        <div class="text-sm text-muted-foreground">
+                            Student: <span data-bind="queue.childName">Emma Smith</span> • Grade <span data-bind="queue.grade">3</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-card rounded-lg shadow-lg overflow-hidden">
+                    <div class="queue-status-green text-white p-4 text-center notification-badge">
+                        <div class="text-lg font-semibold">YOUR TURN NOW!</div>
+                        <div class="text-sm opacity-90">The teacher is ready for you now. Please enter the classroom.</div>
+                    </div>
+                    <div class="p-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="font-medium text-foreground" data-bind="queue.teacherName">Ms. Wilson</span>
+                            <span class="text-sm text-muted-foreground" data-bind="queue.subject">English</span>
+                        </div>
+                        <div class="text-sm text-muted-foreground">
+                            Student: <span data-bind="queue.childName">Emma Smith</span> • Grade <span data-bind="queue.grade">3</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- @END_MAP )) -->
+
+                <button onclick="showParentJoinQueue()" class="w-full bg-secondary text-secondary-foreground py-3 rounded-md font-medium hover:bg-accent transition-colors">
+                    <i class="fas fa-plus mr-2"></i>Join Another Queue
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- @END_COMPONENT: ParentInterface -->
+
+    <!-- @COMPONENT: TeacherInterface -->
+    <div id="teacher-interface" class="interface-container">
+        <div class="max-w-4xl mx-auto p-6">
+            <!-- Teacher Login -->
+            <div id="teacher-login" class="max-w-md mx-auto bg-card rounded-lg shadow-lg p-6">
+                <div class="text-center mb-6">
+                    <i class="fas fa-chalkboard-teacher text-primary text-4xl mb-3"></i>
+                    <h2 class="text-2xl font-semibold text-foreground">Teacher Login</h2>
+                    <p class="text-muted-foreground">Access your queue dashboard</p>
+                </div>
+                <form class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Email</label>
+                        <input type="email" class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" placeholder="teacher@school.edu" data-mock="true">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Password</label>
+                        <input type="password" class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Enter password" data-mock="true">
+                    </div>
+                    <button type="button" onclick="showTeacherDashboard()" class="w-full bg-primary text-primary-foreground py-3 rounded-md font-medium hover:bg-primary/90 transition-colors">
+                        Sign In
+                    </button>
+                </form>
+            </div>
+
+            <!-- Teacher Dashboard -->
+            <div id="teacher-dashboard" class="space-y-6 hidden">
+                <!-- Header -->
+                <div class="bg-card rounded-lg shadow-lg p-6">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h2 class="text-2xl font-semibold text-foreground" data-bind="teacher.name">Mrs. Johnson</h2>
+                            <p class="text-muted-foreground" data-bind="teacher.subject">Mathematics • Grade 3</p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm text-muted-foreground">Queue Code</div>
+                            <div class="text-xl font-bold text-primary" data-bind="teacher.code">JOHNSON3</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Current Meeting -->
+                    <div class="bg-card rounded-lg shadow-lg p-6">
+                        <h3 class="text-lg font-semibold text-foreground mb-4">Current Meeting</h3>
+                        <div class="text-center space-y-4">
+                            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                                <div class="text-2xl font-semibold text-green-700" data-bind="currentMeeting.parentName">Sarah Smith</div>
+                                <div class="text-green-600" data-bind="currentMeeting.childName">Student: Emma Smith</div>
+                                <div class="text-sm text-green-500" data-bind="currentMeeting.grade">Grade 3</div>
+                            </div>
+                            <div class="timer-display text-3xl font-bold text-foreground" data-bind="currentMeeting.timer">15:32</div>
+                            <div class="text-sm text-muted-foreground">Meeting duration</div>
+                        </div>
+                    </div>
+
+                    <!-- Queue Management -->
+                    <div class="bg-card rounded-lg shadow-lg p-6">
+                        <h3 class="text-lg font-semibold text-foreground mb-4">Up Next & Queue</h3>
+                        
+                        <!-- Next Parent -->
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                            <div class="text-sm text-yellow-600 font-medium">NEXT</div>
+                            <div class="font-semibold text-yellow-700" data-bind="nextParent.name">Michael Johnson</div>
+                            <div class="text-sm text-yellow-600">
+                                Student: <span data-bind="nextParent.childName">Alex Johnson</span> • Grade <span data-bind="nextParent.grade">3</span>
+                            </div>
+                        </div>
+
+                        <!-- Waiting List -->
+                        <div class="space-y-2">
+                            <div class="text-sm font-medium text-muted-foreground">Waiting (3)</div>
+                            <!-- @MAP: waitingParents.map(parent => ( -->
+                            <div class="flex justify-between items-center py-2 px-3 bg-muted rounded-md">
+                                <div>
+                                    <div class="text-sm font-medium text-foreground" data-bind="parent.name">Lisa Brown</div>
+                                    <div class="text-xs text-muted-foreground" data-bind="parent.childName">Student: Jake Brown</div>
+                                </div>
+                                <div class="text-xs text-muted-foreground" data-bind="parent.waitTime">12 min</div>
+                            </div>
+                            <div class="flex justify-between items-center py-2 px-3 bg-muted rounded-md">
+                                <div>
+                                    <div class="text-sm font-medium text-foreground" data-bind="parent.name">David Chen</div>
+                                    <div class="text-xs text-muted-foreground" data-bind="parent.childName">Student: Amy Chen</div>
+                                </div>
+                                <div class="text-xs text-muted-foreground" data-bind="parent.waitTime">8 min</div>
+                            </div>
+                            <div class="flex justify-between items-center py-2 px-3 bg-muted rounded-md">
+                                <div>
+                                    <div class="text-sm font-medium text-foreground" data-bind="parent.name">Jennifer Wilson</div>
+                                    <div class="text-xs text-muted-foreground" data-bind="parent.childName">Student: Sophie Wilson</div>
+                                </div>
+                                <div class="text-xs text-muted-foreground" data-bind="parent.waitTime">5 min</div>
+                            </div>
+                            <!-- @END_MAP )) -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Control Buttons -->
+                <div class="bg-card rounded-lg shadow-lg p-6">
+                    <h3 class="text-lg font-semibold text-foreground mb-4">Meeting Controls</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <button class="bg-primary text-primary-foreground py-3 px-6 rounded-md font-medium hover:bg-primary/90 transition-colors flex items-center justify-center" data-event="click:endMeeting">
+                            <i class="fas fa-check mr-2"></i>End Meeting
+                        </button>
+                        <button class="bg-yellow-500 text-white py-3 px-6 rounded-md font-medium hover:bg-yellow-600 transition-colors flex items-center justify-center" data-event="click:extendMeeting">
+                            <i class="fas fa-clock mr-2"></i>Extend (5 min)
+                        </button>
+                        <button class="bg-destructive text-destructive-foreground py-3 px-6 rounded-md font-medium hover:bg-destructive/90 transition-colors flex items-center justify-center" data-event="click:skipNoShow">
+                            <i class="fas fa-user-times mr-2"></i>Skip / No-Show
+                        </button>
+                    </div>
+                    <div class="mt-4 text-sm text-muted-foreground text-center">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        The system automatically handles conflicts and notifications
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- @END_COMPONENT: TeacherInterface -->
+
+    <!-- @COMPONENT: AdminInterface -->
+    <div id="admin-interface" class="interface-container">
+        <div class="max-w-7xl mx-auto p-6">
+            <!-- Admin Login -->
+            <div id="admin-login" class="max-w-md mx-auto bg-card rounded-lg shadow-lg p-6">
+                <div class="text-center mb-6">
+                    <i class="fas fa-user-shield text-primary text-4xl mb-3"></i>
+                    <h2 class="text-2xl font-semibold text-foreground">Admin Login</h2>
+                    <p class="text-muted-foreground">Access the command center</p>
+                </div>
+                <form class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Email</label>
+                        <input type="email" class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" placeholder="admin@school.edu" data-mock="true">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Password</label>
+                        <input type="password" class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Enter password" data-mock="true">
+                    </div>
+                    <button type="button" onclick="showAdminDashboard()" class="w-full bg-primary text-primary-foreground py-3 rounded-md font-medium hover:bg-primary/90 transition-colors">
+                        Sign In
+                    </button>
+                </form>
+            </div>
+
+            <!-- Admin Dashboard -->
+            <div id="admin-dashboard" class="space-y-6 hidden">
+                <!-- Header with Statistics -->
+                <div class="bg-card rounded-lg shadow-lg p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-2xl font-semibold text-foreground">PTM Command Center</h2>
+                            <p class="text-muted-foreground">Live event monitoring and management</p>
+                        </div>
+                        <div class="flex space-x-4">
+                            <button onclick="showSetupInterface()" class="bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-accent transition-colors">
+                                <i class="fas fa-cog mr-2"></i>Setup
+                            </button>
+                            <button class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors">
+                                <i class="fas fa-download mr-2"></i>Export QR Codes
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Statistics -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+                            <div class="text-2xl font-bold text-blue-700" data-bind="stats.totalTeachers">12</div>
+                            <div class="text-sm text-blue-600">Total Teachers</div>
+                        </div>
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                            <div class="text-2xl font-bold text-green-700" data-bind="stats.activeMeetings">8</div>
+                            <div class="text-sm text-green-600">Active Meetings</div>
+                        </div>
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+                            <div class="text-2xl font-bold text-yellow-700" data-bind="stats.waitingParents">23</div>
+                            <div class="text-sm text-yellow-600">Parents Waiting</div>
+                        </div>
+                        <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center">
+                            <div class="text-2xl font-bold text-purple-700" data-bind="stats.completedMeetings">67</div>
+                            <div class="text-sm text-purple-600">Completed Today</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Event Monitoring -->
+                <div class="bg-card rounded-lg shadow-lg p-6">
+                    <h3 class="text-xl font-semibold text-foreground mb-4">Live Event Status</h3>
+                    <div class="grid gap-4">
+                        <!-- @MAP: teachers.map(teacher => ( -->
+                        <div class="border border-border rounded-lg p-4">
+                            <div class="flex justify-between items-start mb-3">
+                                <div>
+                                    <h4 class="font-semibold text-foreground" data-bind="teacher.name">Mrs. Johnson</h4>
+                                    <p class="text-sm text-muted-foreground" data-bind="teacher.subject">Mathematics • Grade 3 • Room 201</p>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs font-medium text-muted-foreground">Code:</span>
+                                    <span class="text-sm font-bold text-primary" data-bind="teacher.code">JOHNSON3</span>
+                                </div>
+                            </div>
+                            
+                            <div class="grid md:grid-cols-3 gap-4">
+                                <div class="bg-green-50 border border-green-200 rounded p-3">
+                                    <div class="text-xs text-green-600 font-medium">CURRENT MEETING</div>
+                                    <div class="text-sm font-semibold text-green-700" data-bind="teacher.currentMeeting.parent">Sarah Smith</div>
+                                    <div class="text-xs text-green-600" data-bind="teacher.currentMeeting.duration">15:32</div>
+                                </div>
+                                <div class="bg-yellow-50 border border-yellow-200 rounded p-3">
+                                    <div class="text-xs text-yellow-600 font-medium">NEXT UP</div>
+                                    <div class="text-sm font-semibold text-yellow-700" data-bind="teacher.nextParent">Michael Johnson</div>
+                                    <div class="text-xs text-yellow-600">Ready to go</div>
+                                </div>
+                                <div class="bg-blue-50 border border-blue-200 rounded p-3">
+                                    <div class="text-xs text-blue-600 font-medium">QUEUE SIZE</div>
+                                    <div class="text-sm font-semibold text-blue-700" data-bind="teacher.queueSize">3 waiting</div>
+                                    <div class="text-xs text-blue-600">Avg wait: 18 min</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="border border-border rounded-lg p-4">
+                            <div class="flex justify-between items-start mb-3">
+                                <div>
+                                    <h4 class="font-semibold text-foreground" data-bind="teacher.name">Mr. Davis</h4>
+                                    <p class="text-sm text-muted-foreground" data-bind="teacher.subject">Science • Grade 3 • Room 205</p>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs font-medium text-muted-foreground">Code:</span>
+                                    <span class="text-sm font-bold text-primary" data-bind="teacher.code">DAVIS5</span>
+                                </div>
+                            </div>
+                            
+                            <div class="grid md:grid-cols-3 gap-4">
+                                <div class="bg-green-50 border border-green-200 rounded p-3">
+                                    <div class="text-xs text-green-600 font-medium">CURRENT MEETING</div>
+                                    <div class="text-sm font-semibold text-green-700" data-bind="teacher.currentMeeting.parent">Lisa Brown</div>
+                                    <div class="text-xs text-green-600" data-bind="teacher.currentMeeting.duration">8:15</div>
+                                </div>
+                                <div class="bg-yellow-50 border border-yellow-200 rounded p-3">
+                                    <div class="text-xs text-yellow-600 font-medium">NEXT UP</div>
+                                    <div class="text-sm font-semibold text-yellow-700" data-bind="teacher.nextParent">David Chen</div>
+                                    <div class="text-xs text-yellow-600">Getting close</div>
+                                </div>
+                                <div class="bg-blue-50 border border-blue-200 rounded p-3">
+                                    <div class="text-xs text-blue-600 font-medium">QUEUE SIZE</div>
+                                    <div class="text-sm font-semibold text-blue-700" data-bind="teacher.queueSize">5 waiting</div>
+                                    <div class="text-xs text-blue-600">Avg wait: 25 min</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="border border-orange-200 bg-orange-50 rounded-lg p-4">
+                            <div class="flex justify-between items-start mb-3">
+                                <div>
+                                    <h4 class="font-semibold text-foreground" data-bind="teacher.name">Ms. Wilson</h4>
+                                    <p class="text-sm text-muted-foreground" data-bind="teacher.subject">English • Grade 3 • Room 210</p>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs font-medium text-muted-foreground">Code:</span>
+                                    <span class="text-sm font-bold text-primary" data-bind="teacher.code">WILSON10</span>
+                                    <span class="bg-orange-200 text-orange-800 text-xs px-2 py-1 rounded">HIGH QUEUE</span>
+                                </div>
+                            </div>
+                            
+                            <div class="grid md:grid-cols-3 gap-4">
+                                <div class="bg-green-50 border border-green-200 rounded p-3">
+                                    <div class="text-xs text-green-600 font-medium">CURRENT MEETING</div>
+                                    <div class="text-sm font-semibold text-green-700" data-bind="teacher.currentMeeting.parent">Jennifer Wilson</div>
+                                    <div class="text-xs text-green-600" data-bind="teacher.currentMeeting.duration">22:45</div>
+                                </div>
+                                <div class="bg-yellow-50 border border-yellow-200 rounded p-3">
+                                    <div class="text-xs text-yellow-600 font-medium">NEXT UP</div>
+                                    <div class="text-sm font-semibold text-yellow-700" data-bind="teacher.nextParent">Robert Taylor</div>
+                                    <div class="text-xs text-yellow-600">Waiting</div>
+                                </div>
+                                <div class="bg-red-50 border border-red-200 rounded p-3">
+                                    <div class="text-xs text-red-600 font-medium">QUEUE SIZE</div>
+                                    <div class="text-sm font-semibold text-red-700" data-bind="teacher.queueSize">8 waiting</div>
+                                    <div class="text-xs text-red-600">Avg wait: 35 min</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- @END_MAP )) -->
+                    </div>
+                </div>
+
+                <!-- Setup Interface -->
+                <div id="setup-interface" class="bg-card rounded-lg shadow-lg p-6 hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xl font-semibold text-foreground">Event Setup & QR Generation</h3>
+                        <button onclick="hideSetupInterface()" class="text-muted-foreground hover:text-foreground">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <!-- Add Teacher Form -->
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div>
+                            <h4 class="text-lg font-medium text-foreground mb-4">Add New Teacher</h4>
+                            <form class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-foreground mb-2">Teacher Name</label>
+                                    <input type="text" class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" placeholder="e.g. Mrs. Johnson" data-mock="true">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-foreground mb-2">Subject</label>
+                                    <input type="text" class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" placeholder="e.g. Mathematics" data-mock="true">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-foreground mb-2">Grade</label>
+                                    <select class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" data-mock="true">
+                                        <option>Select grade</option>
+                                        <option>Kindergarten</option>
+                                        <option>Grade 1</option>
+                                        <option>Grade 2</option>
+                                        <option>Grade 3</option>
+                                        <option>Grade 4</option>
+                                        <option>Grade 5</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-foreground mb-2">Room Number</label>
+                                    <input type="text" class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" placeholder="e.g. 201" data-mock="true">
+                                </div>
+                                <button type="button" class="w-full bg-primary text-primary-foreground py-2 rounded-md font-medium hover:bg-primary/90 transition-colors">
+                                    <i class="fas fa-plus mr-2"></i>Add Teacher & Generate Codes
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- Generated Codes Preview -->
+                        <div>
+                            <h4 class="text-lg font-medium text-foreground mb-4">Generated Codes</h4>
+                            <div class="space-y-4">
+                                <!-- @MAP: generatedCodes.map(code => ( -->
+                                <div class="border border-border rounded-lg p-4">
+                                    <div class="flex justify-between items-start mb-3">
+                                        <div>
+                                            <div class="font-medium text-foreground" data-bind="code.teacherName">Mrs. Johnson</div>
+                                            <div class="text-sm text-muted-foreground" data-bind="code.details">Mathematics • Grade 3 • Room 201</div>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="text-lg font-bold text-primary" data-bind="code.uniqueCode">JOHNSON3</div>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div class="qr-code-placeholder w-16 h-16 rounded border"></div>
+                                        <div class="flex space-x-2">
+                                            <button class="text-sm bg-secondary text-secondary-foreground px-3 py-1 rounded hover:bg-accent transition-colors">
+                                                <i class="fas fa-download mr-1"></i>Download QR
+                                            </button>
+                                            <button class="text-sm bg-secondary text-secondary-foreground px-3 py-1 rounded hover:bg-accent transition-colors">
+                                                <i class="fas fa-print mr-1"></i>Print
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- @END_MAP )) -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- @END_COMPONENT: AdminInterface -->
+
+    <script>
+        // Interface Navigation
+        function showInterface(interfaceType) {
+            // Hide all interfaces
+            document.querySelectorAll('.interface-container').forEach(container => {
+                container.classList.remove('active');
+            });
+            
+            // Show selected interface
+            document.getElementById(interfaceType + '-interface').classList.add('active');
+            
+            // Reset to login screens for teacher and admin
+            if (interfaceType === 'teacher') {
+                document.getElementById('teacher-login').style.display = 'block';
+                document.getElementById('teacher-dashboard').classList.add('hidden');
+            } else if (interfaceType === 'admin') {
+                document.getElementById('admin-login').style.display = 'block';
+                document.getElementById('admin-dashboard').classList.add('hidden');
+            }
+        }
+
+        // Parent Interface Functions
+        function showParentJoinQueue() {
+            document.getElementById('parent-welcome').classList.add('hidden');
+            document.getElementById('parent-join').classList.remove('hidden');
+            document.getElementById('child-info').classList.add('hidden');
+            document.getElementById('parent-dashboard').classList.add('hidden');
+        }
+
+        function showChildInfo() {
+            document.getElementById('parent-welcome').classList.add('hidden');
+            document.getElementById('parent-join').classList.add('hidden');
+            document.getElementById('child-info').classList.remove('hidden');
+            document.getElementById('parent-dashboard').classList.add('hidden');
+        }
+
+        function showParentDashboard() {
+            document.getElementById('parent-welcome').classList.add('hidden');
+            document.getElementById('parent-join').classList.add('hidden');
+            document.getElementById('child-info').classList.add('hidden');
+            document.getElementById('parent-dashboard').classList.remove('hidden');
+        }
+
+        // Teacher Interface Functions
+        function showTeacherDashboard() {
+            document.getElementById('teacher-login').style.display = 'none';
+            document.getElementById('teacher-dashboard').classList.remove('hidden');
+        }
+
+        // Admin Interface Functions
+        function showAdminDashboard() {
+            document.getElementById('admin-login').style.display = 'none';
+            document.getElementById('admin-dashboard').classList.remove('hidden');
+        }
+
+        function showSetupInterface() {
+            document.getElementById('setup-interface').classList.remove('hidden');
+        }
+
+        function hideSetupInterface() {
+            document.getElementById('setup-interface').classList.add('hidden');
+        }
+
+        // TODO: Implement real-time WebSocket connections for live updates
+        // TODO: Implement QR code scanning functionality using device camera
+        // TODO: Implement push notifications for parent alerts
+        // TODO: Implement timer functionality for meeting duration tracking
+        // TODO: Implement queue management logic and conflict resolution
+        // TODO: Implement QR code generation library integration
+        // TODO: Implement secure authentication system
+        // TODO: Implement data persistence and API integration
+        // TODO: Implement export functionality for QR codes and reports
+        
+        // Mock timer update for demonstration
+        (function() {
+            let seconds = 932; // 15:32 in seconds
+            setInterval(function() {
+                seconds++;
+                const minutes = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                const timerElements = document.querySelectorAll('.timer-display');
+                timerElements.forEach(element => {
+                    element.textContent = `${minutes}:${secs.toString().padStart(2, '0')}`;
+                });
+            }, 1000);
+        })();
+    </script>
+</body>
+</html>
